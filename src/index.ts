@@ -81,9 +81,7 @@ interface Schedule {
 }
 
 // OpenAI API setup
-const OPENAI_API_KEY =
-  process.env.OPENAI_API_KEY ||
-  "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";
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const openaiClient = axios.create({
   baseURL: "https://api.openai.com/v1",
   headers: {

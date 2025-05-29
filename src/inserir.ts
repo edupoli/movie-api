@@ -471,7 +471,9 @@ import { Client } from "pg";
 import * as XLSX from "xlsx";
 import { OpenAI } from "openai";
 import { exit } from "process";
-import { toSql } from "pgvector/pg"; // Import pgvector/pg for vector serialization
+import { toSql } from "pgvector/pg";
+import * as dotenv from "dotenv";
+dotenv.config();
 
 // Database configuration
 interface DbConfig {
@@ -491,9 +493,7 @@ const DB_CONFIG: DbConfig = {
 };
 
 // Initialize OpenAI client
-const openaiApiKey =
-  process.env.OPENAI_API_KEY ||
-  "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";
+const openaiApiKey = process.env.OPENAI_API_KEY;
 const client = new OpenAI({ apiKey: openaiApiKey });
 
 // Interfaces for data structures
