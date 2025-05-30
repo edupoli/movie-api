@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: postgres-pgvector
+    ports:
+      - "6024:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=cinemas
+    volumes:
+      - pgdata-vector:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/00-init.sql
+      - ./update_programacao_status_trigger.sql:/docker-entrypoint-initdb.d/01-trigger.sql
+      - ./update_all_programacao_status.sql:/docker-entrypoint-initdb.d/02-procedure.sql
+      - ./schedule_update_programacao_status.sql:/docker-entrypoint-initdb.d/03-schedule.sql
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+
+volumes:
+  pgdata-vector:

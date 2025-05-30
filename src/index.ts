@@ -3,9 +3,7 @@ import { Request, Response } from "express";
 import axios from "axios";
 import * as dotenv from "dotenv";
 import * as winston from "winston";
-import { generateEmbeddingsForData } from "./data-processor";
 import * as multer from "multer";
-import { read, WorkBook, WorkSheet } from "xlsx";
 import { db } from "./database";
 import * as pgp from "pg-promise";
 
@@ -175,6 +173,7 @@ async function textToSql(query: string, cinema?: string): Promise<string> {
 
     return sqlQuery;
   } catch (error: any) {
+    console.error("Error generating SQL query:", error);
     logger.error(`Error generating SQL with OpenAI: ${error.message}`);
     throw new Error("Error generating SQL query");
   }
@@ -278,6 +277,130 @@ async function getMovieSuggestions(): Promise<string[]> {
   }
 }
 
+// app.post("/query", async (req: Request, res: Response): Promise<any> => {
+//   const {
+//     mensagem,
+//     tipo_necessidade = "detalhes",
+//     cinema,
+//   }: QueryRequest = req.body;
+
+//   if (!mensagem) {
+//     return res.status(400).json({ detail: "Mensagem is required" });
+//   }
+
+//   const mensagemLower = mensagem.toLowerCase().trim();
+//   const tipoNecessidadeLower = tipo_necessidade.toLowerCase().trim();
+//   const cinemaLower = cinema?.toLowerCase().trim() || null;
+
+//   logger.info(
+//     `Received mensagem: ${mensagemLower}, tipo_necessidade: ${tipoNecessidadeLower}, cinema: ${cinemaLower}`
+//   );
+
+//   if (
+//     mensagemLower.includes("em cartaz") ||
+//     mensagemLower.includes("horarios")
+//   ) {
+//     const statusValues = await db.any(
+//       "SELECT DISTINCT status FROM programacao;"
+//     );
+//     logger.info(
+//       `Distinct status values in programacao: ${statusValues.map(
+//         (row: any) => row.status
+//       )}`
+//     );
+//   }
+
+//   const semanticKeywords = ["similar to", "parecido com", "like"];
+//   const isSemantic = semanticKeywords.some((keyword) =>
+//     mensagemLower.includes(keyword)
+//   );
+//   const isSchedule =
+//     mensagemLower.includes("horarios") || mensagemLower.includes("horário");
+
+//   try {
+//     let result: any[];
+//     if (isSemantic) {
+//       if (mensagemLower.includes("filme") || mensagemLower.includes("movie")) {
+//         result = await semanticSearch("filmes", mensagemLower, 5, cinemaLower);
+//       } else if (mensagemLower.includes("cinema")) {
+//         result = await semanticSearch("cinemas", mensagemLower, 5, cinemaLower);
+//       } else if (
+//         mensagemLower.includes("programacao") ||
+//         mensagemLower.includes("horario")
+//       ) {
+//         result = await semanticSearch(
+//           "programacao",
+//           mensagemLower,
+//           5,
+//           cinemaLower
+//         );
+//       } else {
+//         return res
+//           .status(400)
+//           .json({ detail: "Unclear which table to search" });
+//       }
+//     } else {
+//       let sqlQuery = await textToSql(mensagemLower, cinemaLower);
+//       logger.info(`Generated SQL: ${sqlQuery}`);
+//       result = await executeSql(sqlQuery);
+
+//       // If no results and it's a schedule query, attempt to correct movie name
+//       if (isSchedule && result.length === 0) {
+//         const movieMatch = mensagemLower.match(/filme\s+(.+)/i);
+//         if (movieMatch) {
+//           const typoMovie = movieMatch[1].trim();
+//           const movieSuggestions = await getMovieSuggestions();
+//           // Simple heuristic: use the LLM to suggest a correction if no exact match
+//           const correctionPrompt = `
+//             The user queried for a movie schedule with a possible typo: "${typoMovie}".
+//             Based on the following list of valid movie names: ${movieSuggestions.join(
+//               ", "
+//             )},
+//             suggest the most likely correct movie name. Return ONLY the corrected name.
+//           `;
+//           const correctionResponse = await openaiClient.post(
+//             "/chat/completions",
+//             {
+//               model: "gpt-4o-mini",
+//               messages: [
+//                 { role: "system", content: correctionPrompt },
+//                 { role: "user", content: typoMovie },
+//               ],
+//               temperature: 0.0,
+//             }
+//           );
+//           const correctedMovie =
+//             correctionResponse.data.choices[0].message.content.trim();
+//           if (correctedMovie && correctedMovie !== typoMovie) {
+//             logger.info(
+//               `Corrected movie name from "${typoMovie}" to "${correctedMovie}"`
+//             );
+//             sqlQuery = await textToSql(
+//               mensagemLower.replace(typoMovie, correctedMovie),
+//               cinemaLower
+//             );
+//             result = await executeSql(sqlQuery);
+//           }
+//         }
+//       }
+//     }
+
+//     // Process results based on tipo_necessidade and query type
+//     if (!isSchedule && tipoNecessidadeLower === "lista") {
+//       result = result
+//         .filter((item) => "nome" in item)
+//         .map((item) => ({ nome: item.nome }));
+//     } else if (!isSchedule && tipoNecessidadeLower === "detalhes") {
+//       // No change needed, return full details
+//     }
+//     // For schedule queries, ignore tipo_necessidade and return as is
+
+//     return res.json(result);
+//   } catch (error: any) {
+//     return res.status(500).json({ detail: error.message });
+//   }
+// });
+
 app.post("/query", async (req: Request, res: Response): Promise<any> => {
   const {
     mensagem,
@@ -343,9 +466,20 @@ app.post("/query", async (req: Request, res: Response): Promise<any> => {
     } else {
       let sqlQuery = await textToSql(mensagemLower, cinemaLower);
       logger.info(`Generated SQL: ${sqlQuery}`);
+
+      // For schedule queries, ensure the current date is within semana_inicio and semana_fim
+      if (isSchedule) {
+        const currentDate = new Date().toISOString().split("T")[0]; // e.g., '2025-05-29'
+        sqlQuery = sqlQuery.replace(
+          "WHERE",
+          `WHERE p.semana_inicio <= '${currentDate}' AND p.semana_fim >= '${currentDate}' AND`
+        );
+        logger.info(`Modified SQL with date filter: ${sqlQuery}`);
+      }
+
       result = await executeSql(sqlQuery);
 
-      // If no results and it's a schedule query, attempt to correct movie name
+      // If no results for a schedule query, attempt to correct movie name or return default message
       if (isSchedule && result.length === 0) {
         const movieMatch = mensagemLower.match(/filme\s+(.+)/i);
         if (movieMatch) {
@@ -380,8 +514,37 @@ app.post("/query", async (req: Request, res: Response): Promise<any> => {
               mensagemLower.replace(typoMovie, correctedMovie),
               cinemaLower
             );
+            // Re-apply the date filter for the corrected query
+            if (isSchedule) {
+              const currentDate = new Date().toISOString().split("T")[0]; // e.g., '2025-05-29'
+              sqlQuery = sqlQuery.replace(
+                "WHERE",
+                `WHERE p.semana_inicio <= '${currentDate}' AND p.semana_fim >= '${currentDate}' AND`
+              );
+            }
             result = await executeSql(sqlQuery);
           }
+        }
+
+        // If still no results for a schedule query, return the default message
+        if (result.length === 0) {
+          let defaultMessage =
+            "Não achei nada sobre esse filme. Dá uma olhada na programação do site, vai que, né? Não me julgue. Às vezes me confundo, sou uma IA ainda em treinamento 😉 Link: ";
+          let urlConferirHorarios = "https://example.com"; // Fallback URL
+
+          if (cinemaLower) {
+            const cinemaData = await db.oneOrNone(
+              "SELECT url_conferir_horarios FROM cinemas WHERE LOWER(nome) = LOWER($1)",
+              [cinemaLower]
+            );
+            if (cinemaData && cinemaData.url_conferir_horarios) {
+              urlConferirHorarios = cinemaData.url_conferir_horarios;
+            }
+          }
+
+          return res.json({
+            detail: defaultMessage + urlConferirHorarios,
+          });
         }
       }
     }
@@ -401,272 +564,6 @@ app.post("/query", async (req: Request, res: Response): Promise<any> => {
     return res.status(500).json({ detail: error.message });
   }
 });
-
-// Insert data into the database, returning inserted records with generated IDs
-async function insertMovies(movies: Movie[]): Promise<Movie[]> {
-  if (movies.length === 0) return [];
-
-  // Columns to insert (excluding 'id')
-  const cs = new pgpLocal.helpers.ColumnSet(
-    [
-      "nome",
-      "sinopse",
-      "duracao",
-      "classificacao",
-      "genero",
-      "diretor",
-      "elenco_principal",
-      { name: "data_estreia", cast: "TIMESTAMP" },
-      "url_poster",
-      "url_trailer",
-      // Embedding will be updated later
-    ],
-    { table: "filmes" }
-  );
-
-  const data = movies.map((movie) => ({
-    nome: movie.nome,
-    sinopse: movie.sinopse || null,
-    duracao: movie.duracao || null,
-    classificacao: movie.classificacao || null,
-    genero: movie.genero || null,
-    diretor: movie.diretor || null,
-    elenco_principal: movie.elenco_principal || null,
-    data_estreia: movie.data_estreia ? new Date(movie.data_estreia) : null,
-    url_poster: movie.url_poster || null,
-    url_trailer: movie.url_trailer || null,
-  }));
-
-  // Use .returning() to get the inserted records with their generated IDs
-  const query = pgpLocal.helpers.insert(data, cs) + " RETURNING id, nome";
-  return await db.many(query);
-}
-
-// Insert data into the database, returning inserted records with generated IDs
-async function insertCinemas(cinemas: Cinema[]): Promise<Cinema[]> {
-  if (cinemas.length === 0) return [];
-
-  // Columns to insert (excluding 'id')
-  const cs = new pgpLocal.helpers.ColumnSet(
-    [
-      "nome",
-      "endereco",
-      "url_conferir_horarios",
-      "url_comprar_ingresso",
-      // Embedding will be updated later
-    ],
-    { table: "cinemas" }
-  );
-
-  const data = cinemas.map((cinema) => ({
-    nome: cinema.nome,
-    endereco: cinema.endereco,
-    url_conferir_horarios: cinema.url_conferir_horarios || null,
-    url_comprar_ingresso: cinema.url_comprar_ingresso || null,
-  }));
-
-  // Use .returning() to get the inserted records with their generated IDs
-  const query =
-    pgpLocal.helpers.insert(data, cs) + " RETURNING id, nome, endereco";
-  return await db.many(query);
-}
-
-// Insert schedules using the new database IDs
-async function insertSchedules(
-  schedules: Schedule[],
-  movieMap: Map<number, number>, // Map: excel_movie_id -> db_movie_id
-  cinemaMap: Map<number, number>, // Map: excel_cinema_id -> db_cinema_id
-  scheduleEmbeddings: {
-    id_filme_excel: number;
-    id_cinema_excel: number;
-    embedding: number[];
-  }[] // Embeddings still keyed by Excel IDs
-): Promise<void> {
-  if (schedules.length === 0) return;
-
-  const cs = new pgpLocal.helpers.ColumnSet(
-    [
-      "id_filme",
-      "id_cinema",
-      "status",
-      { name: "semana_inicio", cast: "DATE" },
-      { name: "semana_fim", cast: "DATE" },
-      "segunda",
-      "terca",
-      "quarta",
-      "quinta",
-      "sexta",
-      "sabado",
-      "domingo",
-      { name: "embedding", mod: ":json" },
-    ],
-    { table: "programacao" }
-  );
-
-  // Map schedule data using database-generated IDs and include embeddings
-  const data = schedules
-    .map((schedule) => {
-      const dbMovieId = movieMap.get(schedule.id_filme_excel);
-      const dbCinemaId = cinemaMap.get(schedule.id_cinema_excel);
-
-      // Find the embedding using the original Excel IDs
-      const embeddingData = scheduleEmbeddings.find(
-        (emb) =>
-          emb.id_filme_excel === schedule.id_filme_excel &&
-          emb.id_cinema_excel === schedule.id_cinema_excel
-      );
-
-      // Only include data if we found corresponding database IDs and embedding
-      if (
-        dbMovieId !== undefined &&
-        dbCinemaId !== undefined &&
-        embeddingData
-      ) {
-        return {
-          id_filme: dbMovieId,
-          id_cinema: dbCinemaId,
-          status: schedule.status,
-          semana_inicio: schedule.semana_inicio
-            ? new Date(schedule.semana_inicio)
-            : null,
-          semana_fim: schedule.semana_fim
-            ? new Date(schedule.semana_fim)
-            : null,
-          segunda: schedule.segunda || null,
-          terca: schedule.terca || null,
-          quarta: schedule.quarta || null,
-          quinta: schedule.quinta || null,
-          sexta: schedule.sexta || null,
-          sabado: schedule.sabado || null,
-          domingo: schedule.domingo || null,
-          embedding: embeddingData.embedding,
-        };
-      }
-      logger.warn(
-        `Skipping schedule entry due to missing mapping or embedding: Movie Excel ID ${schedule.id_filme_excel}, Cinema Excel ID ${schedule.id_cinema_excel}`
-      );
-      return null; // Skip this entry if mapping failed
-    })
-    .filter((item): item is Exclude<typeof item, null> => item !== null); // Filter out nulls
-
-  if (data.length > 0) {
-    await db.none(pgpLocal.helpers.insert(data, cs));
-  }
-}
-
-// Process Excel file and insert into database
-app.post(
-  "/upload-excel",
-  upload.single("file"),
-  async (req: Request, res: Response): Promise<any> => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ error: "No file uploaded" });
-      }
-
-      // Parse Excel file
-      const workbook = read(req.file.buffer, {
-        type: "buffer",
-        cellDates: true,
-      });
-
-      const moviesSheet: WorkSheet = workbook.Sheets["Filmes"];
-      const programacaoSheet: WorkSheet = workbook.Sheets["Programação"];
-      const cinemasSheet: WorkSheet = workbook.Sheets["Cinema"];
-
-      // Convert sheets to JSON, preserving original IDs temporarily
-      const movies: Movie[] = require("xlsx").utils.sheet_to_json(moviesSheet);
-      const schedules: Schedule[] =
-        require("xlsx").utils.sheet_to_json(programacaoSheet);
-      const cinemas: Cinema[] =
-        require("xlsx").utils.sheet_to_json(cinemasSheet);
-
-      // Renomear colunas de ID para evitar conflito e manter os IDs originais da planilha
-      movies.forEach((m) => (m.id_excel = m.id));
-      cinemas.forEach((c) => (c.id_excel = c.id));
-      schedules.forEach((s) => {
-        s.id_excel = s.id;
-        s.id_filme_excel = s.id_filme;
-        s.id_cinema_excel = s.id_cinema;
-        delete s.id; // Remover o ID original, pois o banco irá gerar um novo para a tabela programacao também
-        delete s.id_filme;
-        delete s.id_cinema;
-      });
-
-      // Inserir filmes e cinemas primeiro para obter os IDs gerados pelo banco
-      const insertedMovies = await insertMovies(movies);
-      const insertedCinemas = await insertCinemas(cinemas);
-
-      // Criar mapeamentos dos IDs originais (Excel) para os novos IDs (Banco)
-      // Assumimos que nome para filmes e nome+endereco para cinemas são chaves únicas para mapeamento
-      const movieMap = new Map<number, number>(); // excel_id -> db_id
-      movies.forEach((movie) => {
-        const inserted = insertedMovies.find((im) => im.nome === movie.nome);
-        if (inserted && movie.id_excel !== undefined) {
-          movieMap.set(movie.id_excel, inserted.id!);
-        } else {
-          logger.warn(
-            `Could not map movie "${movie.nome}" (Excel ID: ${movie.id_excel}) to a database ID.`
-          );
-        }
-      });
-
-      const cinemaMap = new Map<number, number>(); // excel_id -> db_id
-      cinemas.forEach((cinema) => {
-        const inserted = insertedCinemas.find(
-          (ic) => ic.nome === cinema.nome && ic.endereco === cinema.endereco
-        );
-        if (inserted && cinema.id_excel !== undefined) {
-          cinemaMap.set(cinema.id_excel, inserted.id!);
-        } else {
-          logger.warn(
-            `Could not map cinema "${cinema.nome}" at "${cinema.endereco}" (Excel ID: ${cinema.id_excel}) to a database ID.`
-          );
-        }
-      });
-
-      // Gerar embeddings usando os dados originais e o mapeamento de IDs
-      const { movieEmbeddings, cinemaEmbeddings, scheduleEmbeddings } =
-        await generateEmbeddingsForData(movies, cinemas, schedules);
-
-      // Inserir dados de programação usando os IDs mapeados do banco
-      const mappedScheduleEmbeddings = scheduleEmbeddings.map((emb) => ({
-        id_filme_excel: emb.id_filme,
-        id_cinema_excel: emb.id_cinema,
-        embedding: emb.embedding,
-      }));
-
-      await insertSchedules(
-        schedules,
-        movieMap,
-        cinemaMap,
-        mappedScheduleEmbeddings
-      );
-
-      logger.info(
-        "Data successfully inserted into the database (excluding movie/cinema embeddings update)"
-      );
-
-      res.status(200).json({
-        message: "Data uploaded and processed successfully",
-        stats: {
-          movies: insertedMovies.length,
-          cinemas: insertedCinemas.length,
-          schedules: schedules.filter(
-            (s) =>
-              movieMap.has(s.id_filme_excel) && cinemaMap.has(s.id_cinema_excel)
-          ).length,
-        },
-      });
-    } catch (error) {
-      console.error("Error processing Excel:", error);
-      res.status(500).json({
-        error: "Failed to process Excel file",
-        details: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  }
-);
 
 // Start the server
 async function startServer() {
