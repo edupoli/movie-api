@@ -2,10 +2,10 @@
   "name": "qdrant-api",
   "version": "1.0.0",
   "description": "",
-  "main": "app.js",
+  "main": "index.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/app.js",
+    "start": "node dist/index.js",
     "dev": "nodemon --exec ts-node src/index.ts",
     "install-deps": "npm install express mutter xlsx @qdrant/js-client-rest openai uuid dotenv @types/express @types/uuid @types/node typescript nodemon concurrently --save-dev"
   },
