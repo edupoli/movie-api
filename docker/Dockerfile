@@ -12,11 +12,6 @@ RUN apt-get update && apt-get install -y postgresql-17-cron \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
-# Configurar postgresql.conf
-RUN echo "shared_preload_libraries = 'pg_cron'" >> /var/lib/postgresql/data/postgresql.conf \
-  && echo "cron.database_name = 'cinemas'" >> /var/lib/postgresql/data/postgresql.conf \
-  && echo "timezone = 'America/Sao_Paulo'" >> /var/lib/postgresql/data/postgresql.conf
-
 # Copiar scripts SQL para inicialização
 COPY ./init.sql /docker-entrypoint-initdb.d/00-init.sql
 COPY ./update_programacao_status_trigger.sql /docker-entrypoint-initdb.d/01-trigger.sql
