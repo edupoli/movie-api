@@ -22,6 +22,9 @@ services:
       -c shared_preload_libraries=pg_cron
       -c cron.database_name=cinemas
       -c timezone='America/Sao_Paulo'
+      -c ssl=on
+      -c ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
+      -c ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
 
 volumes:
   pgdata-vector:

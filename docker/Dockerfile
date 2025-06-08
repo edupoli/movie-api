@@ -3,6 +3,7 @@ FROM pgvector/pgvector:pg17
 USER root
 RUN apt-get update && apt-get install -y postgresql-17-cron \
   build-essential git postgresql-server-dev-17 \
+  ssl-cert \
   && git clone https://github.com/citusdata/pg_cron.git /tmp/pg_cron \
   && cd /tmp/pg_cron \
   && make && make install \
