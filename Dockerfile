@@ -1,14 +1,25 @@
-FROM pgvector/pgvector:pg17
+# Etapa 1: build dos arquivos TypeScript
+FROM node:20 AS build
 
-# Instalar dependências e pg_cron
-RUN apt-get update && apt-get install -y \
-  build-essential \
-  git \
-  postgresql-server-dev-17 \
-  && git clone https://github.com/citusdata/pg_cron.git /tmp/pg_cron \
-  && cd /tmp/pg_cron \
-  && make && make install \
-  && rm -rf /tmp/pg_cron \
-  && apt-get remove -y build-essential git postgresql-server-dev-17 \
-  && apt-get autoremove -y \
-  && apt-get clean
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml ./
+RUN npm install -g pnpm && pnpm install
+
+COPY . .
+RUN pnpm run build
+
+# Etapa 2: imagem final para produção
+FROM node:20-slim
+
+WORKDIR /app
+
+COPY --from=build /app/package.json /app/pnpm-lock.yaml ./
+COPY --from=build /app/dist ./dist
+
+RUN npm install -g pnpm && pnpm install --prod
+
+ENV NODE_ENV=production
+EXPOSE 8000
+
+CMD ["node", "dist/index.js"]
