@@ -123,22 +123,64 @@ function lerPlanilha(excelFile: string): Sheets | null {
   }
 }
 
-function converterData(valor: any): Date | null {
-  if (!valor || valor === "NaN" || valor === "") {
+function converterData(valor: any): string | null {
+  if (!valor || valor === "NaN" || valor === "" || valor === "-") {
     return null;
   }
-  if (valor instanceof Date) {
-    return valor;
+
+  // Se já for um objeto Date válido
+  if (valor instanceof Date && !isNaN(valor.getTime())) {
+    return valor.toISOString().split("T")[0];
   }
-  try {
-    let date = new Date(valor);
-    if (!isNaN(date.getTime())) return date;
-    date = new Date(`${valor}T00:00:00`);
-    if (!isNaN(date.getTime())) return date;
-    return null;
-  } catch {
-    return null;
+
+  // Se for um número serial do Excel (dias desde 01/01/1900)
+  if (typeof valor === "number") {
+    // Excel tem um bug que considera 1900 como ano bissexto, então subtraímos 1 dia para datas após 28/02/1900
+    const excelEpoch = new Date(1899, 11, 31);
+    const excelSerial = valor;
+    const date = new Date(excelEpoch.getTime() + excelSerial * 86400000);
+
+    // Ajuste para o bug do Excel (29/02/1900 que não existe)
+    if (excelSerial >= 60) {
+      date.setTime(date.getTime() - 86400000);
+    }
+
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split("T")[0];
+    }
   }
+
+  // Tenta parsear como string no formato ISO (YYYY-MM-DD)
+  if (typeof valor === "string") {
+    // Remove qualquer parte de tempo que possa estar presente
+    const datePart = valor.split(" ")[0];
+    const isoDate = new Date(datePart);
+
+    if (!isNaN(isoDate.getTime())) {
+      return isoDate.toISOString().split("T")[0];
+    }
+
+    // Tenta formatos brasileiros (DD/MM/YYYY)
+    const brFormat = datePart.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (brFormat) {
+      const date = new Date(`${brFormat[3]}-${brFormat[2]}-${brFormat[1]}`);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split("T")[0];
+      }
+    }
+
+    // Tenta formatos americanos (MM/DD/YYYY)
+    const usFormat = datePart.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (usFormat) {
+      const date = new Date(`${usFormat[3]}-${usFormat[1]}-${usFormat[2]}`);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split("T")[0];
+      }
+    }
+  }
+
+  console.error(`Não foi possível converter a data: ${valor}`);
+  return null;
 }
 
 async function generateEmbedding(text: string): Promise<number[] | null> {
@@ -189,9 +231,9 @@ async function inserirFilmes(
         }
       });
       if (!filme.nome || filme.nome.toString().trim() === "") {
-        console.warn(
-          `Ignorando filme com nome ausente ou vazio: ${JSON.stringify(filme)}`
-        );
+        // console.warn(
+        //   `Ignorando filme com nome ausente ou vazio: ${JSON.stringify(filme)}`
+        // );
         continue;
       }
 
@@ -230,10 +272,10 @@ async function inserirFilmes(
         filme.genero?.toString() ?? null,
         filme.diretor?.toString() ?? null,
         filme.elenco_principal?.toString() ?? null,
-        dataEstreia,
+        dataEstreia, // Agora retorna apenas YYYY-MM-DD
         filme.url_poster?.toString() ?? null,
         filme.url_trailer?.toString() ?? null,
-        embedding ? toSql(embedding) : null, // Use pgvector/pg to serialize
+        embedding ? toSql(embedding) : null,
       ];
 
       const res = await conn.query(query, values);
@@ -280,11 +322,11 @@ async function inserirCinemas(
       });
 
       if (!cinema.Nome || cinema.Nome.toString().trim() === "") {
-        console.warn(
-          `Ignorando cinema com Nome ausente ou vazio: ${JSON.stringify(
-            cinema
-          )}`
-        );
+        // console.warn(
+        //   `Ignorando cinema com Nome ausente ou vazio: ${JSON.stringify(
+        //     cinema
+        //   )}`
+        // );
         continue;
       }
 
