@@ -3,6 +3,8 @@ import { Request, Response } from "express";
 import { query } from "./db";
 import { classifyIntent } from "./nlpOpenAI";
 import { findMovieIdByName } from "./fuzzyMatch";
+import * as dotenv from "dotenv";
+dotenv.config();
 import {
   getMoviesInTheaters,
   getShowtimesToday,
@@ -245,6 +247,6 @@ process.on("uncaughtException", (error) => {
   console.error("Uncaught Exception:", error);
 });
 
-app.listen(3000, () => {
-  console.log("Server running on port 3000");
+app.listen(process.env.PORT || 3000, () => {
+  console.log(`Server running on port ${process.env.PORT || 3000}`);
 });
