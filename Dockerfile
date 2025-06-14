@@ -1,26 +1,25 @@
-# Etapa de build (igual ao anterior)
-FROM node:20-alpine AS builder
+# Etapa 1: build dos arquivos TypeScript
+FROM node:20 AS build
+
 WORKDIR /app
-RUN npm install -g pnpm
+
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+RUN npm install -g pnpm && pnpm install
+
 COPY . .
 RUN pnpm run build
 
-# Imagem final ultra-leve
-FROM alpine:3.19
+# Etapa 2: imagem final para produção
+FROM node:20-slim
+
 WORKDIR /app
 
-# Instala apenas Node.js e dependências mínimas
-RUN apk add --no-cache nodejs tini
+COPY --from=build /app/package.json /app/pnpm-lock.yaml ./
+COPY --from=build /app/dist ./dist
 
-# Copia apenas os arquivos necessários
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
+RUN npm install -g pnpm && pnpm install --prod
 
-# Configurações finais
 ENV NODE_ENV=production
-USER 1000
 EXPOSE 8000
-ENTRYPOINT ["/sbin/tini", "--"]
+
 CMD ["node", "dist/index.js"]
