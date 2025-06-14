@@ -14,7 +14,6 @@ CREATE TABLE IF NOT EXISTS filmes (
   data_estreia DATE,
   url_poster VARCHAR(255),
   url_trailer VARCHAR(255),
-  embedding vector(1536), -- For OpenAI text-embedding-ada-002
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -25,7 +24,6 @@ CREATE TABLE IF NOT EXISTS cinemas (
   endereco TEXT,
   url_conferir_horarios VARCHAR(255),
   url_comprar_ingresso VARCHAR(255),
-  embedding vector(1536),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -44,7 +42,6 @@ CREATE TABLE IF NOT EXISTS programacao (
   sexta TEXT,
   sabado TEXT,
   domingo TEXT,
-  embedding vector(1536),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
