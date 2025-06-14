@@ -68,7 +68,6 @@ export async function getShowtimesToday(params: QueryParams) {
     ? [cinemaId, currentDate, movieId]
     : [cinemaId, currentDate];
   const results = await query(sql, queryParams);
-  console.log(results);
   return results.map((r: any) => ({
     ...r,
     [dayColumn + "_date"]: currentDate.toISOString().split("T")[0],
@@ -105,6 +104,57 @@ export async function getShowtimesSpecificDay(params: QueryParams) {
     ...r,
     [dayColumn + "_date"]: targetDate.toISOString().split("T")[0],
   }));
+}
+
+export async function getMoviesWithShowtimes(params: QueryParams) {
+  const { cinemaId, movieId, currentDate, tipo_necessidade } = params;
+  const dayColumns = [
+    "sabado",
+    "domingo",
+    "segunda",
+    "terca",
+    "quarta",
+    "quinta",
+    "sexta",
+  ];
+  const sql = `
+    SELECT f.nome, ${dayColumns.map((day) => `p.${day}`).join(", ")}
+    FROM programacao p
+    JOIN filmes f ON p.id_filme = f.id
+    JOIN cinemas c ON p.id_cinema = c.id
+    WHERE c.id = $1
+    AND p.status IN ('em cartaz', 'pre venda')
+    AND p.semana_inicio <= $2
+    AND p.semana_fim >= $2
+    ${movieId ? "AND p.id_filme = $3" : ""}
+  `;
+  const queryParams = movieId
+    ? [cinemaId, currentDate, movieId]
+    : [cinemaId, currentDate];
+  const results = await query(sql, queryParams);
+
+  // Map results to include dates for each day
+  const output: any[] = [];
+  results.forEach((r: any) => {
+    const movieOutput: any = { nome: r.nome };
+    dayColumns.forEach((day, index) => {
+      if (r[day]) {
+        const date = new Date(currentDate);
+        const currentDayIndex = currentDate.getDay(); // 0 (Sunday) to 6 (Saturday)
+        const targetDayIndex = index; // sabado (0) to sexta (6)
+        let daysUntilTarget = targetDayIndex - currentDayIndex;
+        if (daysUntilTarget < 0) daysUntilTarget += 7;
+        date.setDate(currentDate.getDate() + daysUntilTarget);
+        movieOutput[day] = r[day];
+        movieOutput[day + "_date"] = date.toISOString().split("T")[0];
+      }
+    });
+    if (Object.keys(movieOutput).length > 1) {
+      // Only include movies with showtimes
+      output.push(movieOutput);
+    }
+  });
+  return output;
 }
 
 export async function getUpcomingMovies(params: QueryParams) {

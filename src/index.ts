@@ -11,6 +11,7 @@ import {
   getShowtimesSpecificDay,
   getUpcomingMovies,
   getMovieDetails,
+  getMoviesWithShowtimes, // New function
 } from "./queries";
 
 const app = express();
@@ -36,7 +37,7 @@ interface QueryParams {
 function formatDate(date: Date | null): string {
   if (!date) return "N/A";
   const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0"); // Months are 0-based
+  const month = String(date.getMonth() + 1).padStart(2, "0");
   const year = date.getFullYear();
   return `${day}/${month}/${year}`;
 }
@@ -131,7 +132,7 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
     let results: any[] = [];
     switch (intent) {
       case "movies_in_theaters":
-        results = await getMoviesInTheaters(queryParams);
+        results = await getMoviesWithShowtimes(queryParams); // Use new function
         break;
       case "movie_showtimes_today":
         results = await getShowtimesToday(queryParams);
@@ -212,7 +213,48 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
             ].includes(k)
           );
           const date = r[day + "_date"];
-          return `${day} ${r[day]}`;
+          // Include movie name only if no specific filme is provided
+          if (!filme) {
+            return `Filme: ${r.nome} - Horários: ${day} ${formatDate(
+              new Date(date)
+            )} ${r[day]}`;
+          }
+          return `${day} ${formatDate(new Date(date))} ${r[day]}`;
+        });
+    } else if (intent === "movies_in_theaters") {
+      // Format movies with showtimes for all days
+      output = results
+        .filter((r: any) => {
+          return Object.keys(r).some((k) =>
+            [
+              "segunda",
+              "terca",
+              "quarta",
+              "quinta",
+              "sexta",
+              "sabado",
+              "domingo",
+            ].includes(k)
+          );
+        })
+        .map((r: any) => {
+          const showtimes: string[] = [];
+          [
+            "sabado",
+            "domingo",
+            "segunda",
+            "terca",
+            "quarta",
+            "quinta",
+            "sexta",
+          ].forEach((day) => {
+            if (r[day]) {
+              showtimes.push(
+                `${day} ${formatDate(new Date(r[day + "_date"]))} ${r[day]}`
+              );
+            }
+          });
+          return `Filme: ${r.nome} - Horários:\n${showtimes.join("\n")}`;
         });
     } else if (tipo_necessidade === "lista") {
       output = results.map((r: any) => r.nome);
@@ -229,7 +271,7 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
       );
     }
 
-    res.json([{ output: output.join("\n") }]);
+    res.json([{ output: output.join("\n\n") }]);
   } catch (error) {
     console.error("Error in /search endpoint:", error);
     res
@@ -239,6 +281,7 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
       ]);
   }
 });
+
 process.on("unhandledRejection", (reason, promise) => {
   console.error("Unhandled Rejection at:", promise, "reason:", reason);
 });
