@@ -212,14 +212,8 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
               "domingo",
             ].includes(k)
           );
-          const date = r[day + "_date"];
-          // Include movie name only if no specific filme is provided
-          if (!filme) {
-            return `Filme: ${r.nome} - Horários: ${day} ${formatDate(
-              new Date(date)
-            )} ${r[day]}`;
-          }
-          return `${day} ${formatDate(new Date(date))} ${r[day]}`;
+
+          return `Filme: ${r.nome} - Horários: ${day} ${r[day]}`;
         });
     } else if (intent === "movies_in_theaters") {
       // Format movies with showtimes for all days
@@ -249,9 +243,7 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
             "sexta",
           ].forEach((day) => {
             if (r[day]) {
-              showtimes.push(
-                `${day} ${formatDate(new Date(r[day + "_date"]))} ${r[day]}`
-              );
+              showtimes.push(`${day}  ${r[day]}`);
             }
           });
           return `Filme: ${r.nome} - Horários:\n${showtimes.join("\n")}`;
