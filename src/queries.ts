@@ -106,6 +106,13 @@ export async function getShowtimesSpecificDay(params: QueryParams) {
   }));
 }
 
+function extractDateFromShowtimes(showtimes: string): string | null {
+  const match = showtimes.match(/^\d{2}\/\d{2}\/\d{4}/);
+  if (!match) return null;
+  const [day, month, year] = match[0].split("/");
+  return `${year}-${month}-${day}`; // Convert to YYYY-MM-DD
+}
+
 export async function getMoviesWithShowtimes(params: QueryParams) {
   const { cinemaId, movieId, currentDate, tipo_necessidade } = params;
   const dayColumns = [
@@ -133,24 +140,72 @@ export async function getMoviesWithShowtimes(params: QueryParams) {
     : [cinemaId, currentDate];
   const results = await query(sql, queryParams);
 
-  // Map results to include dates for each day
   const output: any[] = [];
   results.forEach((r: any) => {
     const movieOutput: any = { nome: r.nome };
-    dayColumns.forEach((day, index) => {
+    dayColumns.forEach((day) => {
       if (r[day]) {
-        const date = new Date(currentDate);
-        const currentDayIndex = currentDate.getDay(); // 0 (Sunday) to 6 (Saturday)
-        const targetDayIndex = index; // sabado (0) to sexta (6)
-        let daysUntilTarget = targetDayIndex - currentDayIndex;
-        if (daysUntilTarget < 0) daysUntilTarget += 7;
-        date.setDate(currentDate.getDate() + daysUntilTarget);
-        movieOutput[day] = r[day];
-        movieOutput[day + "_date"] = date.toISOString().split("T")[0];
+        const extractedDate = extractDateFromShowtimes(r[day]);
+        if (extractedDate) {
+          const date = new Date(extractedDate);
+          if (date >= new Date(currentDate.setHours(0, 0, 0, 0))) {
+            // Exclude past dates
+            movieOutput[day] = r[day]; // Preserve original showtimes with date
+            movieOutput[day + "_date"] = extractedDate;
+          }
+        }
       }
     });
     if (Object.keys(movieOutput).length > 1) {
-      // Only include movies with showtimes
+      output.push(movieOutput);
+    }
+  });
+  return output;
+}
+
+export async function getMovieShowtimesAllDays(params: QueryParams) {
+  const { cinemaId, movieId, currentDate, tipo_necessidade } = params;
+  if (!movieId) throw new Error("Movie ID required");
+  const dayColumns = [
+    "sabado",
+    "domingo",
+    "segunda",
+    "terca",
+    "quarta",
+    "quinta",
+    "sexta",
+  ];
+  const sql = `
+    SELECT f.nome, ${dayColumns.map((day) => `p.${day}`).join(", ")}
+    FROM programacao p
+    JOIN filmes f ON p.id_filme = f.id
+    JOIN cinemas c ON p.id_cinema = c.id
+    WHERE c.id = $1
+    AND p.status IN ('em cartaz', 'pre venda')
+    AND p.semana_inicio <= $2
+    AND p.semana_fim >= $2
+    AND p.id_filme = $3
+  `;
+  const queryParams = [cinemaId, currentDate, movieId];
+  const results = await query(sql, queryParams);
+
+  const output: any[] = [];
+  results.forEach((r: any) => {
+    const movieOutput: any = { nome: r.nome };
+    dayColumns.forEach((day) => {
+      if (r[day]) {
+        const extractedDate = extractDateFromShowtimes(r[day]);
+        if (extractedDate) {
+          const date = new Date(extractedDate);
+          if (date >= new Date(currentDate.setHours(0, 0, 0, 0))) {
+            // Exclude past dates
+            movieOutput[day] = r[day]; // Preserve original showtimes with date
+            movieOutput[day + "_date"] = extractedDate;
+          }
+        }
+      }
+    });
+    if (Object.keys(movieOutput).length > 1) {
       output.push(movieOutput);
     }
   });

@@ -7,71 +7,84 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-export async function classifyIntent(message: string) {
-  try {
-    const prompt = `
-      You are an assistant for a cinema database API with the following schema:
-      - filmes (id, nome, sinopse, duracao, classificacao, genero, diretor, elenco_principal, data_estreia, etc.)
-      - cinemas (id, nome, endereco, url_conferir_horarios, etc.)
-      - programacao (id, id_filme, id_cinema, status ['em cartaz', 'pre venda', 'em breve', 'inativo'], semana_inicio, semana_fim, segunda, terca, quarta, quinta, sexta, sabado, domingo, etc.)
+interface IntentResponse {
+  intent:
+    | "movies_in_theaters"
+    | "movie_showtimes_today"
+    | "movie_showtimes_specific_day"
+    | "movie_showtimes_all_days"
+    | "upcoming_movies"
+    | "movie_details";
+  time: string | null;
+  movie: string | null;
+  status: string | null;
+}
 
-      User query: "${message}"
+async function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-      Tasks:
-      1. Classify the intent of the query. Possible intents:
-         - movies_in_theaters: List movies currently in theaters (e.g., "quais são os filmes em cartaz?").
-         - movie_showtimes_today: Showtimes for today (e.g., "quais os horários de Branca de Neve hoje?", "quais são os horários do filme Elio?").
-         - movie_showtimes_specific_day: Showtimes for a specific day (e.g., "horários de Branca de Neve amanhã", "sessões de Elio no domingo").
-         - upcoming_movies: Movies coming soon (e.g., "quais filmes estreiam na semana que vem?").
-         - movie_details: Details about a specific movie without showtimes (e.g., "qual a sinopse de Branca de Neve?", "quem é o diretor de Elio?").
-         - unknown: Unrecognized or ambiguous query.
-      2. Extract entities:
-         - Time reference (e.g., "hoje" → today, "amanhã" → tomorrow, "semana que vem" → next_week, "domingo" → sunday, etc.). If no time is specified but the query asks for "horários" or "sessões", default to "today".
-         - Movie name (only if explicitly mentioned in the query, otherwise null).
-         - Status filter (em cartaz, pre venda, em breve, or null for default em cartaz).
+export async function classifyIntent(
+  message: string,
+  retries: number = 3
+): Promise<IntentResponse> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const prompt = `
+Você é um assistente de cinema que classifica intenções de usuários com base em mensagens em português. Sua tarefa é identificar a intenção principal, o contexto temporal, o filme mencionado (se houver) e o status dos filmes (em cartaz, em breve, pré-venda). Retorne a resposta no formato JSON com as chaves: intent, time, movie, status.
 
-      Rules:
-      - Queries containing "horários", "sessões", or similar terms (e.g., "quais são os horários do filme Elio?") should be classified as movie_showtimes_today unless a specific day (e.g., "amanhã", "domingo") is mentioned, then use movie_showtimes_specific_day.
-      - Queries asking for movie information (e.g., sinopse, diretor, elenco) without mentioning schedules should be movie_details.
-      - If no movie is mentioned, set movie to null.
-      - Default status to "em cartaz" unless the query implies future movies (e.g., "em breve", "pré-venda").
+Intenções possíveis:
+- "movies_in_theaters": usuário quer a programação geral do cinema sem especificar um dia ou filme (ex.: "qual a programação?", "quais filmes estão em cartaz?").
+- "movie_showtimes_today": usuário quer horários de hoje, com ou sem filme específico (ex.: "quais os horários de hoje?", "horários do filme X hoje").
+- "movie_showtimes_specific_day": usuário quer horários de um dia específico (ex.: "quais os horários de amanhã?", "programação de segunda-feira", "horários do filme X na terça").
+- "movie_showtimes_all_days": usuário quer todos os horários de um filme específico (ex.: "quais os horários do filme X?", "programação completa do filme X").
+- "upcoming_movies": usuário quer filmes que estreiam no futuro (ex.: "quais filmes estreiam semana que vem?", "filmes em breve").
+- "movie_details": usuário quer detalhes de um filme (ex.: "qual a sinopse do filme X?", "quem é o diretor do filme X?").
 
-      Return a JSON object:
-      {
-        "intent": "intent_name",
-        "time": "time_reference_or_null",
-        "movie": "movie_name_or_null",
-        "status": "status_or_null"
+Regras:
+- Para contexto temporal (time), use: "today" (hoje), "tomorrow" (amanhã), "next_week" (próxima semana), ou nome do dia em inglês ("monday", "tuesday", etc.). Se não houver contexto temporal, use null.
+- Para filme (movie), extraia o nome do filme se mencionado, ou use null se não houver.
+- Para status, use "em cartaz" para filmes atualmente exibidos, "em breve" ou "pre venda" para futuros, ou null se não especificado.
+- Se a mensagem mencionar um dia específico (ex.: "amanhã", "segunda-feira") sem um filme, classifique como "movie_showtimes_specific_day".
+- Se a mensagem for ambígua, escolha a intenção mais provável com base no contexto.
+
+Exemplos:
+- Mensagem: "qual a programação?"
+  Resposta: { "intent": "movies_in_theaters", "time": null, "movie": null, "status": "em cartaz" }
+- Mensagem: "quais os horários de amanhã?"
+  Resposta: { "intent": "movie_showtimes_specific_day", "time": "tomorrow", "movie": null, "status": "em cartaz" }
+- Mensagem: "horários do filme Smurfs na segunda-feira"
+  Resposta: { "intent": "movie_showtimes_specific_day", "time": "monday", "movie": "Smurfs", "status": "em cartaz" }
+- Mensagem: "quais filmes estreiam semana que vem?"
+  Resposta: { "intent": "upcoming_movies", "time": "next_week", "movie": null, "status": "em breve" }
+
+Mensagem do usuário: "${message}"
+Resposta (em JSON):
+`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: prompt },
+          { role: "user", content: message },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const result = JSON.parse(response.choices[0].message.content || "{}");
+      return {
+        intent: result.intent || "movies_in_theaters",
+        time: result.time || null,
+        movie: result.movie || null,
+        status: result.status || null,
+      };
+    } catch (error) {
+      console.error(`OpenAI attempt ${attempt} failed:`, error);
+      if (attempt < retries) {
+        await delay(1000 * attempt); // Exponential backoff
+        continue;
       }
-
-      Examples:
-      Query: "Quais os horários de Branca de Neve hoje?"
-      Response: { "intent": "movie_showtimes_today", "time": "today", "movie": "Branca de Neve", "status": "em cartaz" }
-      Query: "Quais são os horários do filme Elio?"
-      Response: { "intent": "movie_showtimes_today", "time": "today", "movie": "Elio", "status": "em cartaz" }
-      Query: "Horários de Elio no domingo"
-      Response: { "intent": "movie_showtimes_specific_day", "time": "sunday", "movie": "Elio", "status": "em cartaz" }
-      Query: "Quais são os filmes em cartaz?"
-      Response: { "intent": "movies_in_theaters", "time": null, "movie": null, "status": "em cartaz" }
-      Query: "Qual a sinopse de Elio?"
-      Response: { "intent": "movie_details", "time": null, "movie": "Elio", "status": null }
-      Query: "Filmes para a semana que vem"
-      Response: { "intent": "upcoming_movies", "time": "next_week", "movie": null, "status": "pre venda" }
-    `;
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 150,
-      temperature: 0.3,
-    });
-
-    const content = response.choices[0].message.content;
-    console.log("OpenAI response:", content);
-    if (!content) throw new Error("No response content from OpenAI");
-    return JSON.parse(content);
-  } catch (error) {
-    console.error("Error in OpenAI intent classification:", error);
-    throw new Error("Failed to classify intent");
+      throw new Error("Failed to classify intent after retries");
+    }
   }
 }

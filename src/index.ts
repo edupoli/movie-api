@@ -11,7 +11,8 @@ import {
   getShowtimesSpecificDay,
   getUpcomingMovies,
   getMovieDetails,
-  getMoviesWithShowtimes, // New function
+  getMoviesWithShowtimes,
+  getMovieShowtimesAllDays,
 } from "./queries";
 
 const app = express();
@@ -118,6 +119,17 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
       targetDate.setDate(currentDate.getDate() + 7);
     }
 
+    // Override intent for day-specific programming without a movie
+    let effectiveIntent = intent;
+    if (
+      time &&
+      !movieId &&
+      !movieFromQuery &&
+      intent === "movies_in_theaters"
+    ) {
+      effectiveIntent = "movie_showtimes_specific_day";
+    }
+
     // Query parameters
     const queryParams: QueryParams = {
       cinemaId,
@@ -130,9 +142,9 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
 
     // Execute query based on intent
     let results: any[] = [];
-    switch (intent) {
+    switch (effectiveIntent) {
       case "movies_in_theaters":
-        results = await getMoviesWithShowtimes(queryParams); // Use new function
+        results = await getMoviesWithShowtimes(queryParams);
         break;
       case "movie_showtimes_today":
         results = await getShowtimesToday(queryParams);
@@ -141,6 +153,24 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
         if (!targetDate)
           throw new Error("Target date required for specific day showtimes");
         results = await getShowtimesSpecificDay({ ...queryParams, targetDate });
+        break;
+      case "movie_showtimes_all_days":
+        if (!movieId && movieFromQuery) {
+          const movie = await findMovieIdByName(movieFromQuery);
+          if (movie) {
+            movieId = movie.id;
+            movieName = movie.name;
+            queryParams.movieId = movieId;
+          }
+        }
+        if (!movieId) {
+          return res.json([
+            {
+              output: `Não achei nada sobre esse filme. Dá uma olhada na programação do site, vai que, né? Não me julgue. Às vezes me confundo, sou uma IA ainda em treinamento 😉 Link: ${urlConferirHorarios}`,
+            },
+          ]);
+        }
+        results = await getMovieShowtimesAllDays(queryParams);
         break;
       case "upcoming_movies":
         results = await getUpcomingMovies(queryParams);
@@ -184,7 +214,7 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
       ]);
     }
 
-    if (intent.includes("showtimes")) {
+    if (effectiveIntent.includes("showtimes")) {
       output = results
         .filter((r: any) => {
           const day = Object.keys(r).find((k) =>
@@ -215,8 +245,7 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
 
           return `Filme: ${r.nome} - Horários: ${day} ${r[day]}`;
         });
-    } else if (intent === "movies_in_theaters") {
-      // Format movies with showtimes for all days
+    } else if (effectiveIntent === "movie_showtimes_all_days") {
       output = results
         .filter((r: any) => {
           return Object.keys(r).some((k) =>
@@ -243,7 +272,39 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
             "sexta",
           ].forEach((day) => {
             if (r[day]) {
-              showtimes.push(`${day}  ${r[day]}`);
+              showtimes.push(`${day} ${r[day]}`);
+            }
+          });
+          return `Filme: ${r.nome} - Horários:\n${showtimes.join("\n")}`;
+        });
+    } else if (effectiveIntent === "movies_in_theaters") {
+      output = results
+        .filter((r: any) => {
+          return Object.keys(r).some((k) =>
+            [
+              "segunda",
+              "terca",
+              "quarta",
+              "quinta",
+              "sexta",
+              "sabado",
+              "domingo",
+            ].includes(k)
+          );
+        })
+        .map((r: any) => {
+          const showtimes: string[] = [];
+          [
+            "sabado",
+            "domingo",
+            "segunda",
+            "terca",
+            "quarta",
+            "quinta",
+            "sexta",
+          ].forEach((day) => {
+            if (r[day]) {
+              showtimes.push(`${day} ${r[day]}`);
             }
           });
           return `Filme: ${r.nome} - Horários:\n${showtimes.join("\n")}`;
