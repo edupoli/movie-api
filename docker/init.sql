@@ -54,10 +54,5 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-
-CREATE INDEX ON filmes USING ivfflat (embedding vector_cosine_ops);
-CREATE INDEX ON cinemas USING ivfflat (embedding vector_cosine_ops);
-
 CREATE INDEX ON programacao (id_filme);
 CREATE INDEX ON programacao (id_cinema);
-CREATE INDEX ON programacao USING ivfflat (embedding vector_cosine_ops);
