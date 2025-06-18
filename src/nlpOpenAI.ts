@@ -31,32 +31,34 @@ export async function classifyIntent(
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const prompt = `
-Você é um assistente de cinema que classifica intenções de usuários com base em mensagens em português. Sua tarefa é identificar a intenção principal, o contexto temporal, o filme mencionado (se houver) e o status dos filmes (em cartaz, em breve, pré-venda). Retorne a resposta no formato JSON com as chaves: intent, time, movie, status.
+Você é um assistente de cinema que classifica intenções de usuários com base em mensagens em português que descrevem explicitamente a intenção. A mensagem sempre começa com "O usuário" e pode conter o nome de um filme entre aspas (ex.: "Filme X"). Sua tarefa é identificar a intenção principal, o contexto temporal, o filme mencionado, o status dos filmes, e filtros de horário (se aplicável). Retorne a resposta no formato JSON com as chaves: intent, time, movie, status, e opcionalmente timeFilter.
 
 Intenções possíveis:
-- "movies_in_theaters": usuário quer a programação geral do cinema sem especificar um dia ou filme (ex.: "qual a programação?", "quais filmes estão em cartaz?").
-- "movie_showtimes_today": usuário quer horários de hoje, com ou sem filme específico (ex.: "quais os horários de hoje?", "horários do filme X hoje").
-- "movie_showtimes_specific_day": usuário quer horários de um dia específico (ex.: "quais os horários de amanhã?", "programação de segunda-feira", "horários do filme X na terça").
-- "movie_showtimes_all_days": usuário quer todos os horários de um filme específico (ex.: "quais os horários do filme X?", "programação completa do filme X").
-- "upcoming_movies": usuário quer filmes que estreiam no futuro (ex.: "quais filmes estreiam semana que vem?", "filmes em breve").
-- "movie_details": usuário quer detalhes de um filme (ex.: "qual a sinopse do filme X?", "quem é o diretor do filme X?").
+- "movies_in_theaters": usuário quer a programação geral ou horários de um filme específico (ex.: "O usuário está perguntando até que dia o filme 'X' estará em cartaz").
+- "movie_showtimes_today": usuário quer horários de hoje (ex.: "O usuário está perguntando sobre os horários de hoje").
+- "movie_showtimes_specific_day": usuário quer horários de um dia específico (ex.: "O usuário está perguntando sobre a programação do cinema para quinta-feira").
+- "movie_showtimes_all_days": usuário quer todos os horários de um filme (ex.: "O usuário está perguntando sobre a versão legendada do filme 'X'").
+- "upcoming_movies": usuário quer filmes futuros ou pré-venda (ex.: "O usuário está perguntando sobre a data de início da pré-venda do filme 'X'").
+- "movie_details": usuário quer detalhes de um filme (ex.: "O usuário quer saber qual é a classificação indicativa do filme 'X'").
 
 Regras:
-- Para contexto temporal (time), use: "today" (hoje), "tomorrow" (amanhã), "next_week" (próxima semana), ou nome do dia em inglês ("monday", "tuesday", etc.). Se não houver contexto temporal, use null.
-- Para filme (movie), extraia o nome do filme se mencionado, ou use null se não houver.
-- Para status, use "em cartaz" para filmes atualmente exibidos, "em breve" ou "pre venda" para futuros, ou null se não especificado.
-- Se a mensagem mencionar um dia específico (ex.: "amanhã", "segunda-feira") sem um filme, classifique como "movie_showtimes_specific_day".
-- Se a mensagem for ambígua, escolha a intenção mais provável com base no contexto.
+- Para contexto temporal (time), use: "hoje" (quando o usuario referenciar hoje ou hj), "amanha" (amanhã), "semana" (próxima semana ou semana que vem etc... sempre que no contexto houver semana ), ou nome do dia em portugues sem a palavra feira  ("segunda", "tercay", etc.). Se não houver contexto temporal, use null.
+- Para filme (movie), extraia o texto entre aspas (ex.: "Filme X" → "Filme X"). Se não houver aspas, use null.
+- Para status, use "em cartaz" para filmes exibidos, "em breve" ou "pre venda" para futuros, ou null se não especificado.
+- Se a mensagem mencionar "valores dos ingressos", mantenha a intenção principal, mas note que preços não estão no banco.
+- Priorize a intenção explícita na mensagem (ex.: "classificação indicativa" → "movie_details").
 
 Exemplos:
-- Mensagem: "qual a programação?"
+- Mensagem: "O usuário está perguntando até que dia o filme 'Lilo e Stitch' estará em cartaz."
+  Resposta: { "intent": "movie_showtimes_all_days", "time": null, "movie": "Lilo e Stitch", "status": "em cartaz" }
+- Mensagem: "O usuário quer saber qual é a classificação indicativa do filme 'Elio'."
+  Resposta: { "intent": "movie_details", "time": null, "movie": "Elio", "status": null }
+- Mensagem: "O usuário está perguntando sobre os horários das sessões a partir de quinta-feira."
+  Resposta: { "intent": "movie_showtimes_specific_day", "time": "thursday", "movie": null, "status": "em cartaz", "timeFilter": { "after": "thursday" } }
+- Mensagem: "O usuário está perguntando sobre a programação de filmes da semana e os valores dos ingressos."
   Resposta: { "intent": "movies_in_theaters", "time": null, "movie": null, "status": "em cartaz" }
-- Mensagem: "quais os horários de amanhã?"
-  Resposta: { "intent": "movie_showtimes_specific_day", "time": "tomorrow", "movie": null, "status": "em cartaz" }
-- Mensagem: "horários do filme Smurfs na segunda-feira"
-  Resposta: { "intent": "movie_showtimes_specific_day", "time": "monday", "movie": "Smurfs", "status": "em cartaz" }
-- Mensagem: "quais filmes estreiam semana que vem?"
-  Resposta: { "intent": "upcoming_movies", "time": "next_week", "movie": null, "status": "em breve" }
+- Mensagem: "O usuário está perguntando sobre os horários das sessões do filme 'Como Treinar o Seu Dragão' que sejam antes das 21:30h."
+  Resposta: { "intent": "movie_showtimes_all_days", "time": null, "movie": "Como Treinar o Seu Dragão", "status": "em cartaz", "timeFilter": { "before": "21:30" } }
 
 Mensagem do usuário: "${message}"
 Resposta (em JSON):

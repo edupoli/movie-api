@@ -3,50 +3,30 @@ import { Request, Response } from "express";
 import { query } from "./db";
 import { classifyIntent } from "./nlpOpenAI";
 import { findMovieIdByName } from "./fuzzyMatch";
+import { getDayDate } from "./utils/getdaydate";
+import { getMovieShowtimes } from "./query-estudo";
 import * as dotenv from "dotenv";
 dotenv.config();
-import {
-  getMoviesInTheaters,
-  getShowtimesToday,
-  getShowtimesSpecificDay,
-  getUpcomingMovies,
-  getMovieDetails,
-  getMoviesWithShowtimes,
-  getMovieShowtimesAllDays,
-} from "./queries";
 
 const app = express();
 app.use(express.json());
 
 interface SearchPayload {
   mensagem: string;
-  tipo_necessidade: "lista" | "detalhes";
   cinema: string;
-  filme: string;
 }
 
 interface QueryParams {
   cinemaId: number;
-  movieId: number | null;
-  currentDate: Date;
+  movieId?: number | null;
+  dayName?: string;
   targetDate?: Date;
-  status: string;
-  tipo_necessidade: "lista" | "detalhes";
-}
-
-// Helper function to format date as dd/mm/yyyy
-function formatDate(date: Date | null): string {
-  if (!date) return "N/A";
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
+  status?: string;
 }
 
 app.post("/search", async (req: Request, res: Response): Promise<any> => {
   try {
-    const { mensagem, tipo_necessidade, cinema, filme }: SearchPayload =
-      req.body;
+    const { mensagem, cinema }: SearchPayload = req.body;
 
     // Validate cinema
     const cinemaData = await query(
@@ -59,22 +39,6 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
     const cinemaId = cinemaData[0].id;
     const urlConferirHorarios = cinemaData[0].url_conferir_horarios;
 
-    // Handle movie if provided
-    let movieId: number | null = null;
-    let movieName: string = "";
-    if (filme) {
-      const movie = await findMovieIdByName(filme);
-      if (!movie) {
-        return res.json([
-          {
-            output: `Não achei nada sobre esse filme. Dá uma olhada na programação do site, vai que, né? Não me julgue. Às vezes me confundo, sou uma IA ainda em treinamento 😉 Link: ${urlConferirHorarios}`,
-          },
-        ]);
-      }
-      movieId = movie.id;
-      movieName = movie.name;
-    }
-
     // Classify intent
     const {
       intent,
@@ -82,256 +46,52 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
       movie: movieFromQuery,
       status,
     } = await classifyIntent(mensagem);
-    const currentDate = new Date();
+    console.log(
+      "Intent:",
+      intent,
+      "Time:",
+      time,
+      "Movie:",
+      movieFromQuery,
+      "Status:",
+      status
+    );
 
-    // Handle time reference
-    let targetDate: Date | undefined;
-    const dayMap: { [key: string]: string } = {
-      monday: "segunda",
-      tuesday: "terca",
-      wednesday: "quarta",
-      thursday: "quinta",
-      friday: "sexta",
-      saturday: "sabado",
-      sunday: "domingo",
-    };
-    if (time === "tomorrow") {
-      targetDate = new Date(currentDate);
-      targetDate.setDate(currentDate.getDate() + 1);
-    } else if (time && dayMap[time]) {
-      const daysOfWeek = [
-        "domingo",
-        "segunda",
-        "terca",
-        "quarta",
-        "quinta",
-        "sexta",
-        "sabado",
-      ];
-      const targetDay = dayMap[time];
-      const targetDayIndex = daysOfWeek.indexOf(targetDay);
-      const currentDayIndex = currentDate.getDay();
-      const daysUntilTarget = (targetDayIndex - currentDayIndex + 7) % 7 || 7;
-      targetDate = new Date(currentDate);
-      targetDate.setDate(currentDate.getDate() + daysUntilTarget);
-    } else if (time === "next_week") {
-      targetDate = new Date(currentDate);
-      targetDate.setDate(currentDate.getDate() + 7);
+    // Handle movie if provided
+    let movieId: number | null = null;
+    let movieName: string = "";
+    if (movieFromQuery) {
+      const movie = await findMovieIdByName(movieFromQuery);
+      if (!movie) {
+        return res.json([
+          {
+            output: `Não achei nada sobre o filme "${movieFromQuery}". Dá uma olhada na programação do site: ${urlConferirHorarios}`,
+          },
+        ]);
+      }
+      movieId = movie.id;
+      movieName = movie.name;
     }
 
-    // Override intent for day-specific programming without a movie
-    let effectiveIntent = intent;
-    if (
-      time &&
-      !movieId &&
-      !movieFromQuery &&
-      intent === "movies_in_theaters"
-    ) {
-      effectiveIntent = "movie_showtimes_specific_day";
-    }
+    const { targetDate, dayName } = getDayDate(time);
 
     // Query parameters
     const queryParams: QueryParams = {
       cinemaId,
       movieId,
-      currentDate,
+      dayName,
       targetDate,
       status: status || "em cartaz",
-      tipo_necessidade,
     };
 
-    // Execute query based on intent
-    let results: any[] = [];
-    switch (effectiveIntent) {
-      case "movies_in_theaters":
-        results = await getMoviesWithShowtimes(queryParams);
-        break;
-      case "movie_showtimes_today":
-        results = await getShowtimesToday(queryParams);
-        break;
-      case "movie_showtimes_specific_day":
-        if (!targetDate)
-          throw new Error("Target date required for specific day showtimes");
-        results = await getShowtimesSpecificDay({ ...queryParams, targetDate });
-        break;
-      case "movie_showtimes_all_days":
-        if (!movieId && movieFromQuery) {
-          const movie = await findMovieIdByName(movieFromQuery);
-          if (movie) {
-            movieId = movie.id;
-            movieName = movie.name;
-            queryParams.movieId = movieId;
-          }
-        }
-        if (!movieId) {
-          return res.json([
-            {
-              output: `Não achei nada sobre esse filme. Dá uma olhada na programação do site, vai que, né? Não me julgue. Às vezes me confundo, sou uma IA ainda em treinamento 😉 Link: ${urlConferirHorarios}`,
-            },
-          ]);
-        }
-        results = await getMovieShowtimesAllDays(queryParams);
-        break;
-      case "upcoming_movies":
-        results = await getUpcomingMovies(queryParams);
-        break;
-      case "movie_details":
-        if (!movieId && movieFromQuery) {
-          const movie = await findMovieIdByName(movieFromQuery);
-          if (movie) {
-            movieId = movie.id;
-            movieName = movie.name;
-            queryParams.movieId = movieId;
-          }
-        }
-        if (!movieId) {
-          return res.json([
-            {
-              output: `Não achei nada sobre esse filme. Dá uma olhada na programação do site, vai que, né? Não me julgue. Às vezes me confundo, sou uma IA ainda em treinamento 😉 Link: ${urlConferirHorarios}`,
-            },
-          ]);
-        }
-        results = await getMovieDetails(queryParams);
-        break;
-      default:
-        return res.json([
-          {
-            output: `Não entendi sua pergunta. Dá uma olhada na programação do site, vai que, né? Não me julgue. Às vezes me confundo, sou uma IA ainda em treinamento 😉 Link: ${urlConferirHorarios}`,
-          },
-        ]);
-    }
-
+    const results = await getMovieShowtimes(queryParams);
     console.log("Results:", results);
-    // Format output
-    let output: string[] = [];
-    if (!results.length) {
-      return res.json([
-        {
-          output: `Não achei nada sobre ${
-            movieName || "filmes"
-          }. Dá uma olhada na programação do site, vai que, né? Não me julgue. Às vezes me confundo, sou uma IA ainda em treinamento 😉 Link: ${urlConferirHorarios}`,
-        },
-      ]);
-    }
-
-    if (effectiveIntent.includes("showtimes")) {
-      output = results
-        .filter((r: any) => {
-          const day = Object.keys(r).find((k) =>
-            [
-              "segunda",
-              "terca",
-              "quarta",
-              "quinta",
-              "sexta",
-              "sabado",
-              "domingo",
-            ].includes(k)
-          );
-          return day && r[day];
-        })
-        .map((r: any) => {
-          const day = Object.keys(r).find((k) =>
-            [
-              "segunda",
-              "terca",
-              "quarta",
-              "quinta",
-              "sexta",
-              "sabado",
-              "domingo",
-            ].includes(k)
-          );
-
-          return `Filme: ${r.nome} - Horários: ${day} ${r[day]}`;
-        });
-    } else if (effectiveIntent === "movie_showtimes_all_days") {
-      output = results
-        .filter((r: any) => {
-          return Object.keys(r).some((k) =>
-            [
-              "segunda",
-              "terca",
-              "quarta",
-              "quinta",
-              "sexta",
-              "sabado",
-              "domingo",
-            ].includes(k)
-          );
-        })
-        .map((r: any) => {
-          const showtimes: string[] = [];
-          [
-            "sabado",
-            "domingo",
-            "segunda",
-            "terca",
-            "quarta",
-            "quinta",
-            "sexta",
-          ].forEach((day) => {
-            if (r[day]) {
-              showtimes.push(`${day} ${r[day]}`);
-            }
-          });
-          return `Filme: ${r.nome} - Horários:\n${showtimes.join("\n")}`;
-        });
-    } else if (effectiveIntent === "movies_in_theaters") {
-      output = results
-        .filter((r: any) => {
-          return Object.keys(r).some((k) =>
-            [
-              "segunda",
-              "terca",
-              "quarta",
-              "quinta",
-              "sexta",
-              "sabado",
-              "domingo",
-            ].includes(k)
-          );
-        })
-        .map((r: any) => {
-          const showtimes: string[] = [];
-          [
-            "sabado",
-            "domingo",
-            "segunda",
-            "terca",
-            "quarta",
-            "quinta",
-            "sexta",
-          ].forEach((day) => {
-            if (r[day]) {
-              showtimes.push(`${day} ${r[day]}`);
-            }
-          });
-          return `Filme: ${r.nome} - Horários:\n${showtimes.join("\n")}`;
-        });
-    } else if (tipo_necessidade === "lista") {
-      output = results.map((r: any) => r.nome);
-    } else {
-      output = results.map(
-        (r: any) =>
-          `Nome: ${r.nome}\nSinopse: ${r.sinopse || "N/A"}\nDuração: ${
-            r.duracao || "N/A"
-          } horas\nClassificação: ${r.classificacao || "N/A"}\nGênero: ${
-            r.genero || "N/A"
-          }\nDiretor: ${r.diretor || "N/A"}\nElenco: ${
-            r.elenco_principal || "N/A"
-          }\nEstreia: ${formatDate(r.data_estreia)}`
-      );
-    }
-
-    res.json([{ output: output.join("\n\n") }]);
+    return res.json(results);
   } catch (error) {
-    console.error("Error in /search endpoint:", error);
+    console.error("Error:", error);
     res
       .status(500)
-      .json([
-        { output: "Erro interno no servidor. Tente novamente mais tarde." },
-      ]);
+      .json([{ output: "Ocorreu um erro ao processar a consulta." }]);
   }
 });
 
