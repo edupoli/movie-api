@@ -49,10 +49,18 @@ CREATE TABLE IF NOT EXISTS programacao (
 CREATE TABLE IF NOT EXISTS users (
   id BIGSERIAL PRIMARY KEY,
   nome VARCHAR(255) NOT NULL,
-  username TEXT NOT NULL,
-  password VARCHAR(255),
+  username TEXT NOT NULL UNIQUE,
+  password VARCHAR(255) NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Create indexes
 CREATE INDEX ON programacao (id_filme);
 CREATE INDEX ON programacao (id_cinema);
+
+-- Insert admin user if not exists
+INSERT INTO users (nome, username, password)
+SELECT 'Administrador', 'admin', '$2b$10$C253sJ9McqP7lnwOYJrkYutHUXPI9BJ3A6y.6IBbqus4GQXEgf37O'
+WHERE NOT EXISTS (
+  SELECT 1 FROM users WHERE username = 'admin'
+);
