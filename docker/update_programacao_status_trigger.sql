@@ -1,37 +1,43 @@
 CREATE OR REPLACE FUNCTION update_programacao_status()
 RETURNS TRIGGER AS $$
 DECLARE
-    v_data_estreia TIMESTAMP;
+    v_current_date DATE := CURRENT_DATE;
     v_schedule_exists BOOLEAN;
 BEGIN
-    SELECT data_estreia
-    INTO v_data_estreia
-    FROM filmes
-    WHERE id = NEW.id_filme;
-
-    IF v_data_estreia IS NULL THEN
-        NEW.status := 'em breve';
-    ELSIF v_data_estreia::DATE BETWEEN NEW.semana_inicio AND NEW.semana_fim THEN
-        NEW.status := 'em cartaz';
-    ELSIF v_data_estreia::DATE < NEW.semana_inicio THEN
+    -- Se a semana_fim já passou (no passado em relação à data atual)
+    IF NEW.semana_fim < v_current_date THEN
         NEW.status := 'inativo';
-    ELSIF v_data_estreia::DATE > NEW.semana_fim THEN
+    
+    -- Se estamos dentro do período de exibição
+    ELSIF v_current_date BETWEEN NEW.semana_inicio AND NEW.semana_fim THEN
+        NEW.status := 'em cartaz';
+    
+    -- Se a semana_inicio ainda está no futuro (filme é lançamento futuro)
+    ELSIF NEW.semana_inicio > v_current_date THEN
+        -- Verifica se existe pelo menos um horário definido em qualquer dia
         SELECT COALESCE(NEW.segunda, NEW.terca, NEW.quarta, NEW.quinta,
                        NEW.sexta, NEW.sabado, NEW.domingo) IS NOT NULL
         INTO v_schedule_exists;
         
         IF v_schedule_exists THEN
-            NEW.status := 'pre-venda';
+            NEW.status := 'pre venda';
         ELSE
             NEW.status := 'em breve';
         END IF;
+    
+    -- Caso residual (não deveria acontecer com a lógica atual)
+    ELSE
+        NEW.status := 'em cartaz'; -- Assume como em cartaz por segurança
     END IF;
 
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE TRIGGER trigger_update_programacao_status
+-- Recria o trigger (caso já exista)
+DROP TRIGGER IF EXISTS trigger_update_programacao_status ON programacao;
+
+CREATE TRIGGER trigger_update_programacao_status
 BEFORE INSERT OR UPDATE
 ON programacao
 FOR EACH ROW

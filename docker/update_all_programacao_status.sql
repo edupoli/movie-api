@@ -1,42 +1,30 @@
 CREATE OR REPLACE FUNCTION update_all_programacao_status()
 RETURNS VOID AS $$
-DECLARE
-    v_record RECORD;
-    v_data_estreia TIMESTAMP;
-    v_schedule_exists BOOLEAN;
 BEGIN
-    FOR v_record IN SELECT p.*, f.data_estreia 
-                    FROM programacao p 
-                    JOIN filmes f ON p.id_filme = f.id 
-    LOOP
-        IF v_record.data_estreia IS NULL THEN
-            UPDATE programacao 
-            SET status = 'em breve' 
-            WHERE id = v_record.id;
-        ELSIF v_record.data_estreia::DATE BETWEEN v_record.semana_inicio AND v_record.semana_fim THEN
-            UPDATE programacao 
-            SET status = 'em cartaz' 
-            WHERE id = v_record.id;
-        ELSIF v_record.data_estreia::DATE < v_record.semana_inicio THEN
-            UPDATE programacao 
-            SET status = 'inativo' 
-            WHERE id = v_record.id;
-        ELSIF v_record.data_estreia::DATE > v_record.semana_fim THEN
-            SELECT COALESCE(v_record.segunda, v_record.terca, v_record.quarta,
-                           v_record.quinta, v_record.sexta, v_record.sabado,
-                           v_record.domingo) IS NOT NULL
-            INTO v_schedule_exists;
-            
-            IF v_schedule_exists THEN
-                UPDATE programacao 
-                SET status = 'pre-venda' 
-                WHERE id = v_record.id;
-            ELSE
-                UPDATE programacao 
-                SET status = 'em breve' 
-                WHERE id = v_record.id;
-            END IF;
-        END IF;
-    END LOOP;
+    -- Atualiza para 'inativo' tudo que já passou da semana_fim
+    UPDATE programacao 
+    SET status = 'inativo'
+    WHERE semana_fim < CURRENT_DATE;
+    
+    -- Atualiza para 'em cartaz' tudo que está no período de exibição
+    UPDATE programacao 
+    SET status = 'em cartaz'
+    WHERE CURRENT_DATE BETWEEN semana_inicio AND semana_fim;
+    
+    -- Atualiza para 'pre-venda' os futuros com horários definidos
+    UPDATE programacao 
+    SET status = 'pre venda'
+    WHERE semana_inicio > CURRENT_DATE
+    AND (segunda IS NOT NULL OR terca IS NOT NULL OR quarta IS NOT NULL OR
+         quinta IS NOT NULL OR sexta IS NOT NULL OR sabado IS NOT NULL OR
+         domingo IS NOT NULL);
+    
+    -- Atualiza para 'em breve' os futuros sem horários definidos
+    UPDATE programacao 
+    SET status = 'em breve'
+    WHERE semana_inicio > CURRENT_DATE
+    AND segunda IS NULL AND terca IS NULL AND quarta IS NULL AND
+        quinta IS NULL AND sexta IS NULL AND sabado IS NULL AND
+        domingo IS NULL;
 END;
 $$ LANGUAGE plpgsql;
