@@ -1,13 +1,44 @@
-export function getDayDate(day: string): { dayName: string; targetDate: Date } {
+export function getDayDate(day: string | null): {
+  dayName: string | null;
+  targetDate: Date | null;
+} {
+  if (!day) {
+    return { dayName: null, targetDate: null };
+  }
+
+  // Normaliza o dia para minúsculas e remove acentos
+  const normalizedDay = day
+    .toLowerCase()
+    .replace(/[áàãâä]/g, "a")
+    .replace(/[éèêë]/g, "e")
+    .replace(/[íìîï]/g, "i")
+    .replace(/[óòõôö]/g, "o")
+    .replace(/[úùûü]/g, "u")
+    .replace(/ç/g, "c");
+
   const currentDate = new Date();
+  currentDate.setHours(0, 0, 0, 0);
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth();
+  const currentDay = currentDate.getDate();
+
+  // Mapeamento de dias com variações de escrita
   const dayMap: { [key: string]: number } = {
     domingo: 0,
     segunda: 1,
+    "segunda-feira": 1,
     terca: 2,
+    terça: 2,
+    "terca-feira": 2,
+    "terça-feira": 2,
     quarta: 3,
+    "quarta-feira": 3,
     quinta: 4,
+    "quinta-feira": 4,
     sexta: 5,
+    "sexta-feira": 5,
     sabado: 6,
+    sábado: 6,
   };
 
   const reverseDayMap: { [key: number]: string } = {
@@ -20,32 +51,79 @@ export function getDayDate(day: string): { dayName: string; targetDate: Date } {
     6: "sabado",
   };
 
-  const today = currentDate.getDay(); // 0 (Domingo) a 6 (Sábado)
-  let targetDate = new Date(currentDate);
+  const today = currentDate.getDay();
 
-  if (day === "hoje") {
+  // Trata casos especiais
+  if (normalizedDay === "hoje") {
     const dayName = reverseDayMap[today];
-    return { dayName, targetDate: targetDate };
-  } else if (day === "amanha") {
-    targetDate.setDate(targetDate.getDate() + 1);
-    const tomorrow = targetDate.getDay();
-    const dayName = reverseDayMap[tomorrow];
-    return { dayName, targetDate: targetDate };
-  } else if (day === "semana") {
-    // Encontrar a próxima segunda-feira
+    return { dayName, targetDate: currentDate };
+  } else if (normalizedDay === "amanha" || normalizedDay === "amanhã") {
+    const targetDate = new Date(currentDate);
+    targetDate.setDate(currentDate.getDate() + 1);
+    const dayName = reverseDayMap[targetDate.getDay()];
+    return { dayName, targetDate };
+  } else if (normalizedDay === "semana") {
+    const targetDate = new Date(currentDate);
     const daysUntilNextMonday = (1 - today + 7) % 7 || 7;
-    targetDate.setDate(targetDate.getDate() + daysUntilNextMonday);
+    targetDate.setDate(currentDate.getDate() + daysUntilNextMonday);
     const dayName = reverseDayMap[targetDate.getDay()];
-    return { dayName, targetDate: targetDate };
-  } else if (day in dayMap) {
-    const targetDay = dayMap[day];
-    const daysToAdd = (targetDay - today + 7) % 7;
-    // Se for hoje, retorna a próxima semana
-    const offset = daysToAdd === 0 ? 7 : daysToAdd;
-    targetDate.setDate(targetDate.getDate() + offset);
-    const dayName = reverseDayMap[targetDate.getDay()];
-    return { dayName, targetDate: targetDate };
-  } else {
-    return { dayName: null, targetDate: currentDate };
+    return { dayName, targetDate };
   }
+
+  // Trata dias da semana por nome
+  if (normalizedDay in dayMap) {
+    const targetDay = dayMap[normalizedDay];
+    const targetDate = new Date(currentDate);
+    const daysToAdd = (targetDay - today + 7) % 7;
+    const offset = daysToAdd === 0 ? 7 : daysToAdd;
+    targetDate.setDate(currentDate.getDate() + offset);
+    const dayName = reverseDayMap[targetDate.getDay()];
+    return { dayName, targetDate };
+  }
+
+  // Restante da função permanece igual para tratamento de datas numéricas
+  const fullDateMatch = day.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const shortDateMatch = day.match(/^(\d{2})\/(\d{2})$/);
+  const dayOnlyMatch = day.match(/^(\d{1,2})$/);
+
+  let targetDate: Date | null = null;
+
+  if (fullDateMatch) {
+    const [, dayStr, monthStr, yearStr] = fullDateMatch;
+    targetDate = new Date(
+      parseInt(yearStr),
+      parseInt(monthStr) - 1,
+      parseInt(dayStr)
+    );
+  } else if (shortDateMatch) {
+    const [, dayStr, monthStr] = shortDateMatch;
+    targetDate = new Date(
+      currentYear,
+      parseInt(monthStr) - 1,
+      parseInt(dayStr)
+    );
+    if (targetDate < currentDate) {
+      targetDate.setFullYear(currentYear + 1);
+    }
+  } else if (dayOnlyMatch) {
+    const [, dayStr] = dayOnlyMatch;
+    const dayNum = parseInt(dayStr);
+    targetDate = new Date(currentYear, currentMonth, dayNum);
+    if (targetDate <= currentDate) {
+      targetDate = new Date(currentYear, currentMonth + 1, dayNum);
+    }
+  }
+
+  if (targetDate && !isNaN(targetDate.getTime())) {
+    const twoWeeksLater = new Date(currentDate);
+    twoWeeksLater.setDate(currentDate.getDate() + 14);
+    if (targetDate >= currentDate && targetDate <= twoWeeksLater) {
+      const dayName = reverseDayMap[targetDate.getDay()];
+      return { dayName, targetDate };
+    }
+  }
+
+  return { dayName: null, targetDate: null };
 }
+const { dayName, targetDate } = getDayDate("27");
+console.log(dayName, targetDate);
