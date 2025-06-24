@@ -81,7 +81,7 @@ export function getDayDate(day: string | null): {
     return { dayName, targetDate };
   }
 
-  // Restante da função permanece igual para tratamento de datas numéricas
+  // Tratamento de datas numéricas
   const fullDateMatch = day.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   const shortDateMatch = day.match(/^(\d{2})\/(\d{2})$/);
   const dayOnlyMatch = day.match(/^(\d{1,2})$/);
@@ -108,16 +108,34 @@ export function getDayDate(day: string | null): {
   } else if (dayOnlyMatch) {
     const [, dayStr] = dayOnlyMatch;
     const dayNum = parseInt(dayStr);
+
+    // Primeiro tenta no mês atual
     targetDate = new Date(currentYear, currentMonth, dayNum);
+
+    // Se a data já passou ou é hoje, tenta no próximo mês
     if (targetDate <= currentDate) {
       targetDate = new Date(currentYear, currentMonth + 1, dayNum);
+    }
+
+    // Se ainda assim a data for muito distante, tenta no mês atual do próximo ano
+    const twoWeeksLater = new Date(currentDate);
+    twoWeeksLater.setDate(currentDate.getDate() + 14);
+
+    if (targetDate > twoWeeksLater) {
+      // Se passou de 2 semanas, tenta no mês atual
+      const currentMonthOption = new Date(currentYear, currentMonth, dayNum);
+      if (currentMonthOption > currentDate) {
+        targetDate = currentMonthOption;
+      }
     }
   }
 
   if (targetDate && !isNaN(targetDate.getTime())) {
-    const twoWeeksLater = new Date(currentDate);
-    twoWeeksLater.setDate(currentDate.getDate() + 14);
-    if (targetDate >= currentDate && targetDate <= twoWeeksLater) {
+    // Validação mais flexível: aceita datas até 2 meses no futuro para casos específicos
+    const twoMonthsLater = new Date(currentDate);
+    twoMonthsLater.setMonth(currentDate.getMonth() + 2);
+
+    if (targetDate >= currentDate && targetDate <= twoMonthsLater) {
       const dayName = reverseDayMap[targetDate.getDay()];
       return { dayName, targetDate };
     }
@@ -125,5 +143,3 @@ export function getDayDate(day: string | null): {
 
   return { dayName: null, targetDate: null };
 }
-const { dayName, targetDate } = getDayDate("27");
-console.log(dayName, targetDate);

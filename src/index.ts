@@ -4,7 +4,7 @@ import { query } from "./db";
 import { classifyIntent } from "./nlpOpenAI";
 import { findMovieIdByName } from "./fuzzyMatch";
 import { getDayDate } from "./utils/getdaydate";
-import { getMovieDetails, getMovieShowtimes } from "./query-estudo";
+import { getMovieDetails, getMovieShowtimes } from "./queries";
 import * as dotenv from "dotenv";
 dotenv.config();
 
@@ -25,7 +25,7 @@ interface QueryParams {
 }
 
 function formatDate(date: Date | null): string {
-  if (!date) return "N/A";
+  if (!date) return null;
   const day = String(date.getDate()).padStart(2, "0");
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const year = date.getFullYear();
@@ -54,41 +54,58 @@ function formatMovieData(results: any[]): { output: string }[] {
     "domingo",
   ];
   const today = new Date();
-  today.setHours(0, 0, 0, 0); // Remove a parte de horas para comparar apenas datas
+  today.setHours(0, 0, 0, 0);
   let output = "";
 
   results.forEach((movie, index) => {
-    // Fixed fields to display first
-    const fixedFields = {
-      nome: movie.nome,
-      status: movie.status,
-      semana_inicio: formatDate(movie.semana_inicio),
-      semana_fim: formatDate(movie.semana_fim),
-    };
+    // Verifica se é um resultado com programação de horários
+    const hasScheduleData = daysWeek.some((day) => movie[day]);
 
-    // Extract and sort day fields by date
-    const dayEntries: { dayName: string; date: Date | null; value: string }[] =
-      daysWeek
+    if (hasScheduleData) {
+      // Caso 1: Quando há dados de programação (mantém a lógica atual)
+      const fixedFields = {
+        nome: movie.nome,
+        status: movie.status,
+        semana_inicio: formatDate(movie.semana_inicio),
+        semana_fim: formatDate(movie.semana_fim),
+        data_estreia: formatDate(movie.data_estreia),
+      };
+
+      // Extrai e ordena os dias por data
+      const dayEntries = daysWeek
         .map((dayName) => ({
           dayName,
           date: extractDateFromDayString(movie[dayName] || ""),
           value: movie[dayName] || "",
         }))
-        .filter((entry) => entry.value && entry.date && entry.date >= today) // Exclude empty or past dates
+        .filter((entry) => entry.value && entry.date && entry.date >= today)
         .sort((a, b) => {
           if (!a.date || !b.date) return 0;
           return a.date.getTime() - b.date.getTime();
         });
 
-    // Output fixed fields
-    Object.entries(fixedFields).forEach(([key, value]) => {
-      output += `${key} ${value}\n`;
-    });
+      // Adiciona campos fixos
+      Object.entries(fixedFields).forEach(([key, value]) => {
+        if (value) output += `${key} ${value}\n`;
+      });
 
-    // Output sorted day fields
-    dayEntries.forEach((entry) => {
-      output += `${entry.dayName} ${entry.value}\n`;
-    });
+      // Adiciona horários ordenados
+      dayEntries.forEach((entry) => {
+        output += `${entry.dayName} ${entry.value}\n`;
+      });
+    } else {
+      // Caso 2: Quando há apenas dados do filme (formato simples)
+      Object.entries(movie).forEach(([key, value]) => {
+        if (
+          key === "semana_inicio" ||
+          key === "semana_fim" ||
+          key === "data_estreia"
+        ) {
+          value = formatDate(value as Date);
+        }
+        output += `${key}: ${value}\n`;
+      });
+    }
 
     if (index < results.length - 1) {
       output += "\n\n";
