@@ -45,6 +45,37 @@ CREATE TABLE IF NOT EXISTS programacao (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Create ingressos table with foreign keys
+CREATE TABLE IF NOT EXISTS ingressos (
+  id BIGSERIAL PRIMARY KEY,
+  id_cinema BIGINT NOT NULL REFERENCES cinemas(id),
+  nome TEXT NOT NULL,
+  observacoes TEXT,
+  inteira_2d DECIMAL(10,2),
+  meia_2d DECIMAL(10,2),
+  inteira_2d_desconto DECIMAL(10,2),
+  inteira_3d DECIMAL(10,2),
+  meia_3d DECIMAL(10,2),
+  inteira_3d_desconto DECIMAL(10,2),
+  inteira_vip_2d DECIMAL(10,2),
+  meia_vip_2d DECIMAL(10,2),
+  inteira_vip_2d_desconto DECIMAL(10,2),
+  inteira_vip_3d DECIMAL(10,2),
+  meia_vip_3d DECIMAL(10,2),
+  inteira_vip_3d_desconto DECIMAL(10,2),
+  segunda TEXT,
+  terca TEXT,
+  quarta TEXT,
+  quinta TEXT,
+  sexta TEXT,
+  sabado TEXT,
+  domingo TEXT,
+  feriados TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  
+  CONSTRAINT fk_cinema FOREIGN KEY(id_cinema) REFERENCES cinemas(id)
+);
+
 -- Create users table
 CREATE TABLE IF NOT EXISTS users (
   id BIGSERIAL PRIMARY KEY,
@@ -55,8 +86,13 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- Create indexes
-CREATE INDEX ON programacao (id_filme);
-CREATE INDEX ON programacao (id_cinema);
+-- Índices para a tabela programacao
+CREATE INDEX IF NOT EXISTS idx_programacao_id_filme ON programacao (id_filme);
+CREATE INDEX IF NOT EXISTS idx_programacao_id_cinema ON programacao (id_cinema);
+
+-- Índices para a tabela ingressos
+CREATE INDEX IF NOT EXISTS idx_ingressos_id_filme ON ingressos (id_filme);
+CREATE INDEX IF NOT EXISTS idx_ingressos_id_cinema ON ingressos (id_cinema);
 
 -- Insert admin user if not exists
 INSERT INTO users (nome, username, password)
