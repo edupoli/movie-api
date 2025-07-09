@@ -5,10 +5,10 @@ services:
       dockerfile: Dockerfile
     container_name: postgres-pgvector
     ports:
-      - "5432:5432"
+      - "30100:5432"
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=mooviai
+      - POSTGRES_PASSWORD=ServerMoovi!@#
       - POSTGRES_DB=cinemas
       - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 --auth-local=scram-sha-256
     volumes:

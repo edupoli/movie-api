@@ -88,3 +88,66 @@ export async function getMovieDetails(params: QueryParams) {
   `;
   return await query(sql, [movieId]);
 }
+
+export async function getTicketPrices(params: QueryParams) {
+  const { cinemaId, movieId, dayName } = params;
+  let sql = `
+    SELECT nome, observacoes, 
+           inteira_2d, meia_2d, inteira_2d_desconto, 
+           inteira_3d, meia_3d, inteira_3d_desconto,
+           inteira_vip_2d, meia_vip_2d, inteira_vip_2d_desconto,
+           inteira_vip_3d, meia_vip_3d, inteira_vip_3d_desconto,
+           ${
+             dayName
+               ? `${dayName}`
+               : "segunda, terca, quarta, quinta, sexta, sabado, domingo"
+           }
+    FROM ingressos
+    WHERE id_cinema = $1
+    AND (
+      inteira_2d IS NOT NULL OR meia_2d IS NOT NULL OR inteira_2d_desconto IS NOT NULL OR
+      inteira_3d IS NOT NULL OR meia_3d IS NOT NULL OR inteira_3d_desconto IS NOT NULL OR
+      inteira_vip_2d IS NOT NULL OR meia_vip_2d IS NOT NULL OR inteira_vip_2d_desconto IS NOT NULL OR
+      inteira_vip_3d IS NOT NULL OR meia_vip_3d IS NOT NULL OR inteira_vip_3d_desconto IS NOT NULL
+    )
+    ${movieId ? "AND nome = $" + (dayName ? "2" : "2") : ""}
+    ${dayName ? "AND " + dayName + " IS NOT NULL" : ""}
+  `;
+
+  const queryParams: any[] = [cinemaId];
+  if (movieId) queryParams.push(movieId);
+
+  const results = await query(sql, queryParams);
+  return results.map((result) => {
+    const formattedResult = {
+      nome: result.nome,
+      observacoes: result.observacoes,
+    };
+    // Include all price columns
+    [
+      "inteira_2d",
+      "meia_2d",
+      "inteira_2d_desconto",
+      "inteira_3d",
+      "meia_3d",
+      "inteira_3d_desconto",
+      "inteira_vip_2d",
+      "meia_vip_2d",
+      "inteira_vip_2d_desconto",
+      "inteira_vip_3d",
+      "meia_vip_3d",
+      "inteira_vip_3d_desconto",
+    ].forEach((key) => {
+      if (result[key] !== null) formattedResult[key] = result[key];
+    });
+    // Include day-specific data if requested or all days if not
+    if (dayName) {
+      if (result[dayName] !== null) formattedResult[dayName] = result[dayName];
+    } else {
+      daysWeek.forEach((day) => {
+        if (result[day] !== null) formattedResult[day] = result[day];
+      });
+    }
+    return formattedResult;
+  });
+}

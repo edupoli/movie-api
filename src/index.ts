@@ -4,7 +4,7 @@ import { query } from "./db";
 import { classifyIntent } from "./nlpOpenAI";
 import { findMovieIdByName } from "./fuzzyMatch";
 import { getDayDate } from "./utils/getdaydate";
-import { getMovieDetails, getMovieShowtimes } from "./queries";
+import { getMovieDetails, getMovieShowtimes, getTicketPrices } from "./queries";
 import * as dotenv from "dotenv";
 dotenv.config();
 
@@ -34,11 +34,8 @@ function formatDate(date: Date | null): string {
 
 function extractDateFromDayString(dayString: string): Date | null {
   if (!dayString) return null;
-
-  // Extrai a primeira data encontrada no formato DD/MM/YYYY
   const dateMatch = dayString.match(/\d{2}\/\d{2}\/\d{4}/);
   if (!dateMatch) return null;
-
   const [day, month, year] = dateMatch[0].split("/").map(Number);
   return new Date(year, month - 1, day);
 }
@@ -58,11 +55,9 @@ function formatMovieData(results: any[]): { output: string }[] {
   let output = "";
 
   results.forEach((movie, index) => {
-    // Verifica se é um resultado com programação de horários
     const hasScheduleData = daysWeek.some((day) => movie[day]);
 
     if (hasScheduleData) {
-      // Caso 1: Quando há dados de programação (mantém a lógica atual)
       const fixedFields = {
         nome: movie.nome,
         status: movie.status,
@@ -71,7 +66,6 @@ function formatMovieData(results: any[]): { output: string }[] {
         data_estreia: formatDate(movie.data_estreia),
       };
 
-      // Extrai e ordena os dias por data
       const dayEntries = daysWeek
         .map((dayName) => ({
           dayName,
@@ -84,17 +78,14 @@ function formatMovieData(results: any[]): { output: string }[] {
           return a.date.getTime() - b.date.getTime();
         });
 
-      // Adiciona campos fixos
       Object.entries(fixedFields).forEach(([key, value]) => {
         if (value) output += `${key} ${value}\n`;
       });
 
-      // Adiciona horários ordenados
       dayEntries.forEach((entry) => {
         output += `${entry.dayName} ${entry.value}\n`;
       });
     } else {
-      // Caso 2: Quando há apenas dados do filme (formato simples)
       Object.entries(movie).forEach(([key, value]) => {
         if (
           key === "semana_inicio" ||
@@ -106,6 +97,68 @@ function formatMovieData(results: any[]): { output: string }[] {
         output += `${key}: ${value}\n`;
       });
     }
+
+    if (index < results.length - 1) {
+      output += "\n\n";
+    }
+  });
+
+  return [{ output: output.trim() }];
+}
+
+function formatTicketPrices(results: any[]): { output: string }[] {
+  const daysWeek = [
+    "segunda",
+    "terca",
+    "quarta",
+    "quinta",
+    "sexta",
+    "sabado",
+    "domingo",
+  ];
+  let output = "";
+
+  results.forEach((ticket, index) => {
+    const priceFields = [
+      "inteira_2d",
+      "meia_2d",
+      "inteira_2d_desconto",
+      "inteira_3d",
+      "meia_3d",
+      "inteira_3d_desconto",
+      "inteira_vip_2d",
+      "meia_vip_2d",
+      "inteira_vip_2d_desconto",
+      "inteira_vip_3d",
+      "meia_vip_3d",
+      "inteira_vip_3d_desconto",
+    ];
+
+    // Add fixed fields
+    const fixedFields = { nome: ticket.nome, observacoes: ticket.observacoes };
+    Object.entries(fixedFields).forEach(([key, value]) => {
+      if (value) output += `${key}: ${value}\n`;
+    });
+
+    // Add price fields with string-to-number conversion
+    priceFields.forEach((key) => {
+      if (ticket[key] !== null && ticket[key] !== undefined) {
+        const value = parseFloat(ticket[key]);
+        if (!isNaN(value)) {
+          output += `${key}: R$${value.toFixed(2)}\n`;
+        }
+      }
+    });
+
+    // Add day-specific fields with string-to-number conversion
+    daysWeek.forEach((day) => {
+      if (ticket[day] !== null && ticket[day] !== undefined) {
+        const value = parseFloat(ticket[day]);
+        if (!isNaN(value)) {
+          output += `${day}: R$${value.toFixed(2)}\n`;
+        }
+      }
+    });
 
     if (index < results.length - 1) {
       output += "\n\n";
@@ -184,6 +237,9 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
       case "movie_details":
         results = await getMovieDetails(queryParams);
         break;
+      case "ticket_prices":
+        results = await getTicketPrices(queryParams);
+        break;
       default:
         return res.json([
           {
@@ -192,15 +248,20 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
         ]);
     }
 
-    console.log("Results:", results);
+    console.log("Results:", results); // Debug log to inspect data
     if (!results.length) {
       return res.json([
         {
-          output: `Não achei nada sobre o filme "${movieName}". Dá uma olhada na programação do site: ${urlConferirHorarios}`,
+          output: `Não achei nada sobre ${
+            movieName ? `o filme "${movieName}"` : "essa solicitação"
+          }. Dá uma olhada na programação do site: ${urlConferirHorarios}`,
         },
       ]);
     }
-    const formattedResults = formatMovieData(results);
+    const formattedResults =
+      intent === "ticket_prices"
+        ? formatTicketPrices(results)
+        : formatMovieData(results);
     return res.json(formattedResults);
   } catch (error) {
     console.error("Error:", error);
@@ -218,6 +279,6 @@ process.on("uncaughtException", (error) => {
   console.error("Uncaught Exception:", error);
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log(`Server running on port ${process.env.PORT || 3000}`);
+app.listen(process.env.PORT || 8000, () => {
+  console.log(`Server running on port ${process.env.PORT || 8000}`);
 });

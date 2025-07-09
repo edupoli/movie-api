@@ -8,7 +8,7 @@ const openai = new OpenAI({
 });
 
 interface IntentResponse {
-  intent: "movie_showtimes" | "movie_details";
+  intent: "movie_showtimes" | "movie_details" | "ticket_prices";
   time: string | null;
   movie: string | null;
   status: string | null;
@@ -30,6 +30,7 @@ Você é um assistente de cinema que classifica intenções de usuários com bas
 Intenções possíveis:
 - "movie_details": Usuário quer detalhes específicos de um filme, como classificação indicativa, sinopse, gênero, data de estreia, diretor, etc. (ex.: "O usuário quer saber qual é a classificação indicativa do filme 'Elio'").
 - "movie_showtimes": Usuário quer informações sobre programação, horários ou status de exibição, incluindo filmes em cartaz, em breve ou em pré-venda (ex.: "O usuário está perguntando sobre a exibição do filme 'Stich' hoje").
+- "ticket_prices": Usuário quer informações sobre valores ou preços de ingressos (ex.: "O usuário quer saber o valor do ingresso do filme 'Jurassic Parque'").
 
 Parâmetros:
 - time: Indica o contexto temporal. Use "hoje" para menções a hoje ou "hj", "amanha" para amanhã, "semana" para próxima semana ou "semana que vem", ou o nome do dia em português sem "feira" (ex.: "quinta" para "quinta-feira" ou "a partir de quinta-feira"). O usuario tambem pode menciar o dia de forma numerica como por exemplo dia 25 ou  dia 02/07 nesses casos voce deve extrair para o parametro time apenas a data em formato numerico  etc.. Se não houver menção temporal, use null.
@@ -71,6 +72,16 @@ Exemplos:
   Resposta: { "intent": "movie_showtimes", "time": null, "movie": "Bailarina", "status": "pre venda" }
 - Mensagem: "O usuário está perguntando sobre a disponibilidade do filme 'Como Treinar o Seu Dragão' dublado às 21:00."
   Resposta: { "intent": "movie_showtimes", "time": null, "movie": "Como Treinar o Seu Dragão", "status": "null" }
+- Mensagem: "O usuário quer saber o valor do ingresso do filme 'Jurassic Parque'."
+  Resposta: { "intent": "ticket_prices", "time": null, "movie": "Jurassic Parque", "status": null }
+- Mensagem: "O usuário está perguntando sobre os valores dos ingressos amanhã."
+  Resposta: { "intent": "ticket_prices", "time": "amanha", "movie": null, "status": null }
+- Mensagem: "O usuário quer saber o preço do ingresso do filme 'Jurassic: Recomeço' na sessão das 18:40."
+  Resposta: { "intent": "ticket_prices", "time": null, "movie": "Jurassic: Recomeço", "status": null }
+- Mensagem: "O usuário está perguntando se ainda há promoções na segunda e terça."
+  Resposta: { "intent": "ticket_prices", "time": "segunda", "movie": null, "status": null }
+- Mensagem: "O usuário deseja saber como funciona a promoção de meio ingresso na segunda-feira."
+  Resposta: { "intent": "ticket_prices", "time": "segunda", "movie": null, "status": null }
 
 Mensagem do usuário: "${message}"
 Resposta (em JSON):
