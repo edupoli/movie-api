@@ -91,7 +91,6 @@ CREATE INDEX IF NOT EXISTS idx_programacao_id_filme ON programacao (id_filme);
 CREATE INDEX IF NOT EXISTS idx_programacao_id_cinema ON programacao (id_cinema);
 
 -- Índices para a tabela ingressos
-CREATE INDEX IF NOT EXISTS idx_ingressos_id_filme ON ingressos (id_filme);
 CREATE INDEX IF NOT EXISTS idx_ingressos_id_cinema ON ingressos (id_cinema);
 
 -- Insert admin user if not exists
