@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS programacao (
   id_filme BIGINT REFERENCES filmes(id),
   id_cinema BIGINT REFERENCES cinemas(id),
   status VARCHAR(50),
+  data_estreia DATE,
   semana_inicio DATE,
   semana_fim DATE,
   segunda TEXT,
