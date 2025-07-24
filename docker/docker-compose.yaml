@@ -3,7 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: postgres-pgvector
+    container_name: postgres-mooviai
+    restart: unless-stopped
     ports:
       - "30100:5432"
     environment:
@@ -14,9 +15,6 @@ services:
     volumes:
       - pgdata-vector:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/00-init.sql
-      - ./update_programacao_status_trigger.sql:/docker-entrypoint-initdb.d/01-trigger.sql
-      - ./update_all_programacao_status.sql:/docker-entrypoint-initdb.d/02-procedure.sql
-      - ./schedule_update_programacao_status.sql:/docker-entrypoint-initdb.d/03-schedule.sql
     command: >
       postgres
       -c shared_preload_libraries=pg_cron
