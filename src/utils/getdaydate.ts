@@ -52,6 +52,7 @@ export function getDayDate(day: string | null): {
   };
 
   const today = currentDate.getDay();
+  console.log("normalizedDay", normalizedDay);
 
   // Trata casos especiais
   if (normalizedDay === "hoje") {
@@ -63,11 +64,14 @@ export function getDayDate(day: string | null): {
     const dayName = reverseDayMap[targetDate.getDay()];
     return { dayName, targetDate };
   } else if (normalizedDay === "semana") {
-    const targetDate = new Date(currentDate);
-    const daysUntilNextMonday = (1 - today + 7) % 7 || 7;
-    targetDate.setDate(currentDate.getDate() + daysUntilNextMonday);
-    const dayName = reverseDayMap[targetDate.getDay()];
-    return { dayName, targetDate };
+    // Semana completa: não filtra por dia
+    return { dayName: null, targetDate: null };
+  } else if (
+    normalizedDay === "fim_de_semana" ||
+    normalizedDay === "final_de_semana"
+  ) {
+    // Fim de semana: valor especial para tratamento na query
+    return { dayName: "fim_de_semana", targetDate: null };
   }
 
   // Trata dias da semana por nome

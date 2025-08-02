@@ -30,33 +30,62 @@ export const getMovieShowtimes = async (params: QueryParams) => {
   console.log("params", params);
 
   // Construir a query SQL
-  const sql = `SELECT ${
-    dayName && daysWeek.includes(dayName)
-      ? `f.nome, p.status, p.semana_inicio, p.semana_fim, p.${dayName}`
-      : "f.nome, p.status, p.semana_inicio, p.semana_fim, p.segunda, p.terca, p.quarta, p.quinta, p.sexta, p.sabado, p.domingo"
+  let sql = "";
+  if (dayName === null) {
+    // Semana completa: busca todos os dias
+    sql = `SELECT f.nome, p.status, p.semana_inicio, p.semana_fim, p.segunda, p.terca, p.quarta, p.quinta, p.sexta, p.sabado, p.domingo
+      FROM programacao p
+      JOIN filmes f ON p.id_filme = f.id
+      JOIN cinemas c ON p.id_cinema = c.id
+      WHERE c.id = $1
+      ${
+        status !== null
+          ? status === "em cartaz"
+            ? "AND (p.status = $2 OR p.status = 'pre venda')"
+            : "AND p.status = $2"
+          : "AND p.status != 'inativo'"
+      }
+      ${movieId ? "AND p.id_filme = $" + (status !== null ? "3" : "2") : ""}
+      AND p.semana_fim >= CURRENT_DATE
+    `;
+  } else if (dayName === "fim_de_semana") {
+    // Fim de semana: busca apenas sábado e domingo
+    sql = `SELECT f.nome, p.status, p.semana_inicio, p.semana_fim, p.sabado, p.domingo
+      FROM programacao p
+      JOIN filmes f ON p.id_filme = f.id
+      JOIN cinemas c ON p.id_cinema = c.id
+      WHERE c.id = $1
+      ${
+        status !== null
+          ? status === "em cartaz"
+            ? "AND (p.status = $2 OR p.status = 'pre venda')"
+            : "AND p.status = $2"
+          : "AND p.status != 'inativo'"
+      }
+      ${movieId ? "AND p.id_filme = $" + (status !== null ? "3" : "2") : ""}
+      AND (p.sabado IS NOT NULL OR p.domingo IS NOT NULL)
+      AND p.semana_fim >= CURRENT_DATE
+    `;
+  } else if (dayName && daysWeek.includes(dayName)) {
+    // Dia específico
+    sql = `SELECT f.nome, p.status, p.semana_inicio, p.semana_fim, p.${dayName}
+      FROM programacao p
+      JOIN filmes f ON p.id_filme = f.id
+      JOIN cinemas c ON p.id_cinema = c.id
+      WHERE c.id = $1
+      ${
+        status !== null
+          ? status === "em cartaz"
+            ? "AND (p.status = $2 OR p.status = 'pre venda')"
+            : "AND p.status = $2"
+          : "AND p.status != 'inativo'"
+      }
+      ${movieId ? "AND p.id_filme = $" + (status !== null ? "3" : "2") : ""}
+      AND $${status !== null ? (movieId ? "4" : "3") : movieId ? "3" : "2"} 
+        BETWEEN p.semana_inicio AND p.semana_fim
+      AND p.semana_fim >= CURRENT_DATE
+    `;
   }
-    FROM programacao p
-    JOIN filmes f ON p.id_filme = f.id
-    JOIN cinemas c ON p.id_cinema = c.id
-    WHERE c.id = $1
-    ${
-      status !== null
-        ? status === "em cartaz"
-          ? "AND (p.status = $2 OR p.status = 'pre venda')" // Lógica especial para "em cartaz"
-          : "AND p.status = $2" // Filtro normal para outros status
-        : "AND p.status != 'inativo'" // Filtro quando status é null
-    }
-    ${movieId ? "AND p.id_filme = $" + (status !== null ? "3" : "2") : ""}
-    ${
-      dayName
-        ? `AND $${
-            status !== null ? (movieId ? "4" : "3") : movieId ? "3" : "2"
-          } 
-          BETWEEN p.semana_inicio AND p.semana_fim`
-        : ""
-    }
-    AND p.semana_fim >= CURRENT_DATE
-  `;
 
   // Preparar os parâmetros
   const queryParams: any[] = [cinemaId];
@@ -70,7 +99,7 @@ export const getMovieShowtimes = async (params: QueryParams) => {
     queryParams.push(movieId);
   }
 
-  if (dayName) {
+  if (dayName && daysWeek.includes(dayName)) {
     queryParams.push(targetDate);
   }
 
