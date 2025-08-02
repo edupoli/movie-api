@@ -78,19 +78,26 @@ export const getMovieShowtimes = async (params: QueryParams) => {
   const results = await query(sql, queryParams);
   return results;
 };
+
 export async function getMovieDetails(params: QueryParams) {
-  const { movieId } = params;
+  const { movieId, cinemaId } = params;
   if (!movieId) throw new Error("Movie ID required");
+  if (!cinemaId) throw new Error("Cinema ID required");
+
   const sql = `
-    SELECT nome, sinopse, duracao, classificacao, genero, diretor, elenco_principal, data_estreia, url_poster, url_trailer
-    FROM filmes
-    WHERE id = $1
+    SELECT f.nome, f.sinopse, f.duracao, f.classificacao, f.genero, 
+           f.diretor, f.elenco_principal, f.data_estreia, 
+           f.url_poster, f.url_trailer
+    FROM filmes f
+    JOIN programacao p ON f.id = p.id_filme
+    WHERE f.id = $1 AND p.id_cinema = $2
   `;
-  return await query(sql, [movieId]);
+
+  return await query(sql, [movieId, cinemaId]);
 }
 
 export async function getTicketPrices(params: QueryParams) {
-  const { cinemaId, movieId, dayName } = params;
+  const { cinemaId, dayName } = params;
   let sql = `
     SELECT nome, observacoes, 
            inteira_2d, meia_2d, inteira_2d_desconto, 
@@ -110,12 +117,10 @@ export async function getTicketPrices(params: QueryParams) {
       inteira_vip_2d IS NOT NULL OR meia_vip_2d IS NOT NULL OR inteira_vip_2d_desconto IS NOT NULL OR
       inteira_vip_3d IS NOT NULL OR meia_vip_3d IS NOT NULL OR inteira_vip_3d_desconto IS NOT NULL
     )
-    ${movieId ? "AND nome = $" + (dayName ? "2" : "2") : ""}
     ${dayName ? "AND " + dayName + " IS NOT NULL" : ""}
   `;
 
   const queryParams: any[] = [cinemaId];
-  if (movieId) queryParams.push(movieId);
 
   const results = await query(sql, queryParams);
   return results.map((result) => {

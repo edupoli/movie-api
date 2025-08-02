@@ -40,6 +40,12 @@ function extractDateFromDayString(dayString: string): Date | null {
   return new Date(year, month - 1, day);
 }
 
+function isProgramacaoDefinida(valor: string): boolean {
+  // Programação definida: data + pelo menos um horário + tipo de sessão (ex: 30/07/2025 14:00 (DUB))
+  // Regex: data + espaço + horário + espaço + parênteses
+  return /\d{2}\/\d{2}\/\d{4} \d{2}:\d{2} \([^)]+\)/.test(valor);
+}
+
 function formatMovieData(results: any[]): { output: string }[] {
   const daysWeek = [
     "segunda",
@@ -54,51 +60,41 @@ function formatMovieData(results: any[]): { output: string }[] {
   today.setHours(0, 0, 0, 0);
   let output = "";
 
-  results.forEach((movie, index) => {
-    const hasScheduleData = daysWeek.some((day) => movie[day]);
+  // Ordenar por semana_inicio (mais antiga primeiro)
+  const sortedResults = [...results].sort((a, b) => {
+    const dateA = a.semana_inicio ? new Date(a.semana_inicio).getTime() : 0;
+    const dateB = b.semana_inicio ? new Date(b.semana_inicio).getTime() : 0;
+    return dateA - dateB;
+  });
 
-    if (hasScheduleData) {
-      const fixedFields = {
-        nome: movie.nome,
-        status: movie.status,
-        semana_inicio: formatDate(movie.semana_inicio),
-        semana_fim: formatDate(movie.semana_fim),
-        data_estreia: formatDate(movie.data_estreia),
-      };
+  sortedResults.forEach((movie, index) => {
+    const fixedFields = {
+      nome: movie.nome,
+      status: movie.status,
+      semana_inicio: formatDate(movie.semana_inicio),
+      semana_fim: formatDate(movie.semana_fim),
+      data_estreia: formatDate(movie.data_estreia),
+    };
 
-      const dayEntries = daysWeek
-        .map((dayName) => ({
-          dayName,
-          date: extractDateFromDayString(movie[dayName] || ""),
-          value: movie[dayName] || "",
-        }))
-        .filter((entry) => entry.value && entry.date && entry.date >= today)
-        .sort((a, b) => {
-          if (!a.date || !b.date) return 0;
-          return a.date.getTime() - b.date.getTime();
-        });
+    // Filtrar apenas dias com programação definida
+    const programacaoDias = daysWeek
+      .map((dayName) => ({
+        dayName,
+        value: movie[dayName] || "",
+      }))
+      .filter((entry) => isProgramacaoDefinida(entry.value));
 
-      Object.entries(fixedFields).forEach(([key, value]) => {
-        if (value) output += `${key} ${value}\n`;
-      });
+    // Adiciona campos fixos
+    Object.entries(fixedFields).forEach(([key, value]) => {
+      if (value) output += `${key} ${value}\n`;
+    });
 
-      dayEntries.forEach((entry) => {
-        output += `${entry.dayName} ${entry.value}\n`;
-      });
-    } else {
-      Object.entries(movie).forEach(([key, value]) => {
-        if (
-          key === "semana_inicio" ||
-          key === "semana_fim" ||
-          key === "data_estreia"
-        ) {
-          value = formatDate(value as Date);
-        }
-        output += `${key}: ${value}\n`;
-      });
-    }
+    // Adiciona apenas dias com programação definida
+    programacaoDias.forEach((entry) => {
+      output += `${entry.dayName} ${entry.value}\n`;
+    });
 
-    if (index < results.length - 1) {
+    if (index < sortedResults.length - 1) {
       output += "\n\n";
     }
   });
