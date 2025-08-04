@@ -54,37 +54,57 @@ function formatMovieData(results: any[]): { output: string }[] {
   today.setHours(0, 0, 0, 0);
   let output = "";
 
-  // Ordenar por semana_inicio (mais antiga primeiro)
+  // ADIÇÃO: Ordenar os resultados por semana_inicio (mais antiga primeiro)
   const sortedResults = [...results].sort((a, b) => {
     const dateA = a.semana_inicio ? new Date(a.semana_inicio).getTime() : 0;
     const dateB = b.semana_inicio ? new Date(b.semana_inicio).getTime() : 0;
     return dateA - dateB;
   });
 
+  // Alterado para usar sortedResults em vez de results
   sortedResults.forEach((movie, index) => {
-    const fixedFields = {
-      nome: movie.nome,
-      status: movie.status,
-      semana_inicio: formatDate(movie.semana_inicio),
-      semana_fim: formatDate(movie.semana_fim),
-      data_estreia: formatDate(movie.data_estreia),
-    };
+    const hasScheduleData = daysWeek.some((day) => movie[day]);
 
-    // Mapear todos os dias da semana
-    const programacaoDias = daysWeek.map((dayName) => ({
-      dayName,
-      value: movie[dayName] || "",
-    }));
+    if (hasScheduleData) {
+      const fixedFields = {
+        nome: movie.nome,
+        status: movie.status,
+        semana_inicio: formatDate(movie.semana_inicio),
+        semana_fim: formatDate(movie.semana_fim),
+        data_estreia: formatDate(movie.data_estreia),
+      };
 
-    // Adiciona campos fixos
-    Object.entries(fixedFields).forEach(([key, value]) => {
-      if (value) output += `${key} ${value}\n`;
-    });
+      const dayEntries = daysWeek
+        .map((dayName) => ({
+          dayName,
+          date: extractDateFromDayString(movie[dayName] || ""),
+          value: movie[dayName] || "",
+        }))
+        .filter((entry) => entry.value && entry.date && entry.date >= today)
+        .sort((a, b) => {
+          if (!a.date || !b.date) return 0;
+          return a.date.getTime() - b.date.getTime();
+        });
 
-    // Adiciona apenas dias com programação definida
-    programacaoDias.forEach((entry) => {
-      output += `${entry.dayName} ${entry.value}\n`;
-    });
+      Object.entries(fixedFields).forEach(([key, value]) => {
+        if (value) output += `${key} ${value}\n`;
+      });
+
+      dayEntries.forEach((entry) => {
+        output += `${entry.dayName} ${entry.value}\n`;
+      });
+    } else {
+      Object.entries(movie).forEach(([key, value]) => {
+        if (
+          key === "semana_inicio" ||
+          key === "semana_fim" ||
+          key === "data_estreia"
+        ) {
+          value = formatDate(value as Date);
+        }
+        output += `${key}: ${value}\n`;
+      });
+    }
 
     if (index < sortedResults.length - 1) {
       output += "\n\n";
