@@ -40,12 +40,6 @@ function extractDateFromDayString(dayString: string): Date | null {
   return new Date(year, month - 1, day);
 }
 
-function isProgramacaoDefinida(valor: string): boolean {
-  // Programação definida: data + pelo menos um horário + tipo de sessão (ex: 30/07/2025 14:00 (DUB))
-  // Regex: data + espaço + horário + espaço + parênteses
-  return /\d{2}\/\d{2}\/\d{4} \d{2}:\d{2} \([^)]+\)/.test(valor);
-}
-
 function formatMovieData(results: any[]): { output: string }[] {
   const daysWeek = [
     "segunda",
@@ -76,13 +70,11 @@ function formatMovieData(results: any[]): { output: string }[] {
       data_estreia: formatDate(movie.data_estreia),
     };
 
-    // Filtrar apenas dias com programação definida
-    const programacaoDias = daysWeek
-      .map((dayName) => ({
-        dayName,
-        value: movie[dayName] || "",
-      }))
-      .filter((entry) => isProgramacaoDefinida(entry.value));
+    // Mapear todos os dias da semana
+    const programacaoDias = daysWeek.map((dayName) => ({
+      dayName,
+      value: movie[dayName] || "",
+    }));
 
     // Adiciona campos fixos
     Object.entries(fixedFields).forEach(([key, value]) => {
