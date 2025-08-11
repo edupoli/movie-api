@@ -4,7 +4,12 @@ import { query } from "./db";
 import { classifyIntent } from "./nlpOpenAI";
 import { findMovieIdByName } from "./fuzzyMatch";
 import { getDayDate } from "./utils/getdaydate";
-import { getMovieDetails, getMovieShowtimes, getTicketPrices } from "./queries";
+import {
+  getMovieDetails,
+  getMovieShowtimes,
+  getTicketPrices,
+  getCinemaInfo,
+} from "./queries";
 import * as dotenv from "dotenv";
 dotenv.config();
 
@@ -248,6 +253,9 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
       case "ticket_prices":
         results = await getTicketPrices(queryParams);
         break;
+      case "cinema_info":
+        results = await getCinemaInfo(queryParams);
+        break;
       default:
         return res.json([
           {
@@ -269,6 +277,14 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
     const formattedResults =
       intent === "ticket_prices"
         ? formatTicketPrices(results)
+        : intent === "cinema_info"
+        ? results.map((cinema) => ({
+            output: `Informações do cinema:\nNome: ${cinema?.nome}\nEndereço: ${
+              cinema?.endereco || "Não cadastrado"
+            }\nTelefone: ${cinema?.telefone || "Não cadastrado"}\nSite: ${
+              cinema.url_conferir_horarios || "-"
+            }\nComprar ingresso: ${cinema.url_comprar_ingresso || "-"}`,
+          }))
         : formatMovieData(results);
     return res.json(formattedResults);
   } catch (error) {

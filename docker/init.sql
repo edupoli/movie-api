@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS cinemas (
   id BIGSERIAL PRIMARY KEY,
   nome VARCHAR(255) NOT NULL,
   endereco TEXT,
+  telefone VARCHAR(255),
   url_conferir_horarios VARCHAR(255),
   url_comprar_ingresso VARCHAR(255),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

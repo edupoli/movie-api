@@ -8,7 +8,7 @@ const openai = new OpenAI({
 });
 
 interface IntentResponse {
-  intent: "movie_showtimes" | "movie_details" | "ticket_prices";
+  intent: "movie_showtimes" | "movie_details" | "ticket_prices" | "cinema_info";
   time: string | null;
   movie: string | null;
   status: string | null;
@@ -25,12 +25,13 @@ export async function classifyIntent(
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const prompt = `
-Você é um assistente de cinema que classifica intenções de usuários com base em mensagens em português que descrevem explicitamente a intenção, começando com "O usuário". A mensagem pode conter o nome de um filme entre aspas (ex.: "Filme X"). Sua tarefa é identificar a intenção principal e extrair os parâmetros temporal, filme e status. Existem apenas duas intenções: "movie_details" (detalhes específicos de um filme) e "movie_showtimes" (programação ou horários). Retorne a resposta em JSON com as chaves: intent, time, movie, status.
+Você é um assistente de cinema que classifica intenções de usuários com base em mensagens em português que descrevem explicitamente a intenção, começando com "O usuário". A mensagem pode conter o nome de um filme entre aspas (ex.: "Filme X"). Sua tarefa é identificar a intenção principal e extrair os parâmetros temporal, filme e status. Existem quatro intenções: "movie_details" (detalhes específicos de um filme), "movie_showtimes" (programação ou horários), "ticket_prices" (preços de ingressos) e "cinema_info" (informações sobre o cinema). Retorne a resposta em JSON com as chaves: intent, time, movie, status.
 
 Intenções possíveis:
 - "movie_details": Usuário quer detalhes específicos de um filme, como classificação indicativa, sinopse, gênero, data de estreia, diretor, etc. (ex.: "O usuário quer saber qual é a classificação indicativa do filme 'Elio'").
 - "movie_showtimes": Usuário quer informações sobre programação, horários ou status de exibição, incluindo filmes em cartaz, em breve ou em pré-venda (ex.: "O usuário está perguntando sobre a exibição do filme 'Stich' hoje").
-- "ticket_prices": Usuário quer informações sobre valores ou preços de ingressos, Quando na intencao do usuario estiver relacionada a valor de ingressos sendo que aqui podem haver termos como valor, preço , pagar, custo etc.... (ex.: "O usuário quer saber o valor do ingresso do filme 'Jurassic Parque'", "O usuário quer saber sobre promoções." , "O usuário está perguntando sobre a localização do cinema em Goiânia e sobre o dia em que todos pagam meia entrada.", "O usuário está perguntando se crianças pagam ingresso para Superman").
+- "ticket_prices": Usuário quer informações sobre valores ou preços de ingressos. Aqui podem haver termos como valor, preço, pagar, custo, promoções, meia entrada, etc. (ex.: "O usuário quer saber o valor do ingresso do filme 'Jurassic Parque'", "O usuário quer saber sobre promoções.", "O usuário está perguntando se crianças pagam ingresso para Superman").
+- "cinema_info": Usuário quer informações sobre o cinema, como endereço, localização, telefone, horário de atendimento, acessibilidade, estacionamento, contato, etc. (ex.: "O usuário quer saber o endereço do cinema", "O usuário está perguntando qual o telefone do cinema", "O usuário quer saber o horário de funcionamento do cinema").
 
 Parâmetros:
 - time: Indica o contexto temporal. Use "hoje" para menções a hoje ou "hj", "amanha" para amanhã, "semana" para próxima semana ou "semana que vem", ou o nome do dia em português sem "feira" (ex.: "quinta" para "quinta-feira" ou "a partir de quinta-feira"). O usuario tambem pode menciar o dia de forma numerica como por exemplo dia 25 ou  dia 02/07 nesses casos voce deve extrair para o parametro time apenas a data em formato numerico  etc.. Se não houver menção temporal, use null.
@@ -42,7 +43,8 @@ Regras:
 - Priorize a intenção explícita:
   - Se a mensagem menciona "classificação", "sinopse", "gênero", "data de estreia", "diretor", "elenco" ou similar, use "movie_details".
   - Para "horários", "programação", "exibição", "sessões", "em cartaz", "em breve", "pré-venda" ou similar, use "movie_showtimes".
-- Para menções a "valores dos ingressos", use "movie_showtimes", mas note que preços não estão no banco de dados.
+  - Para menções a "valores dos ingressos", use "ticket_prices".
+  - Para menções a endereço, localização, telefone, horário de funcionamento, contato, acessibilidade, estacionamento, use "cinema_info".
 - Extraia apenas o primeiro filme mencionado entre aspas, se houver múltiplos.
 - Para "a partir de [dia]", use o dia como time (ex.: "a partir de quinta-feira" → time: "quinta").
 - Se a mensagem não mencionar time, movie ou status, preencha como null.
@@ -87,6 +89,12 @@ Exemplos:
   Resposta: { "intent": "movie_showtimes", "time": "final_de_semana", "movie": null, "status": null }
 - Mensagem: "O usuário quer saber os horários das sessões para sábado e domingo."
   Resposta: { "intent": "movie_showtimes", "time": "final_de_semana", "movie": null, "status": null }
+- Mensagem: "O usuário está perguntando sobre o endereço do cinema."
+  Resposta: { "intent": "cinema_info", "time": null, "movie": null, "status": null }
+- Mensagem: "O usuário quer saber o telefone do cinema."
+  Resposta: { "intent": "cinema_info", "time": null, "movie": null, "status": null }
+- Mensagem: "O usuário quer saber o horário de funcionamento do cinema."
+  Resposta: { "intent": "cinema_info", "time": null, "movie": null, "status": null }
 
 Mensagem do usuário: "${message}"
 Resposta (em JSON):

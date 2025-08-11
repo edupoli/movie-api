@@ -185,3 +185,15 @@ export async function getTicketPrices(params: QueryParams) {
     return formattedResult;
   });
 }
+
+export async function getCinemaInfo(params: QueryParams) {
+  const { cinemaId } = params;
+  if (!cinemaId) throw new Error("Cinema ID required");
+  const sql = `
+    SELECT id, nome, endereco, url_conferir_horarios, url_comprar_ingresso
+    FROM cinemas
+    WHERE id = $1
+  `;
+  const result = await query(sql, [cinemaId]);
+  return result;
+}
