@@ -1,4 +1,3 @@
-
 import * as stringSimilarity from "string-similarity";
 import { query } from "./db";
 
@@ -38,7 +37,8 @@ export async function findMovieIdByName(
     .sort((a, b) => b.rating - a.rating);
   if (
     sortedRatings[0].rating >= 0.75 &&
-    (sortedRatings.length === 1 || sortedRatings[0].rating > sortedRatings[1].rating + 0.1)
+    (sortedRatings.length === 1 ||
+      sortedRatings[0].rating > sortedRatings[1].rating + 0.1)
   ) {
     const matchedMovie = movieData[sortedRatings[0].idx];
     return [{ id: matchedMovie.id, name: matchedMovie.originalName }];
