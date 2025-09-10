@@ -4,7 +4,7 @@ CREATE EXTENSION IF NOT EXISTS pg_cron;
 -- Create filmes table
 CREATE TABLE IF NOT EXISTS filmes (
   id BIGSERIAL PRIMARY KEY,
-  nome VARCHAR(255) NOT NULL,
+  nome VARCHAR(255) NOT NULL UNIQUE,
   sinopse TEXT,
   duracao NUMERIC(5,1),
   classificacao VARCHAR(50),
@@ -101,3 +101,7 @@ SELECT 'Administrador', 'admin', '$2b$10$C253sJ9McqP7lnwOYJrkYutHUXPI9BJ3A6y.6IB
 WHERE NOT EXISTS (
   SELECT 1 FROM users WHERE username = 'admin'
 );
+
+ALTER TABLE programacao
+ADD CONSTRAINT programacao_unica UNIQUE (id_filme, id_cinema);
+

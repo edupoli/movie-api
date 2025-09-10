@@ -1,4 +1,4 @@
-import * as express from "express";
+import express from "express";
 import { Request, Response } from "express";
 import { query } from "./db";
 import { classifyIntent } from "./nlpOpenAI";
@@ -215,77 +215,108 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
       Status: status,
     });
 
-    // Handle movie if provided
-    let movieId: number | null = null;
-    let movieName: string = "";
+    // Se a intenção envolve filme, buscar todos os matches
+    let movies: Array<{ id: number; name: string }> = [];
     if (movieFromQuery) {
-      const movie = await findMovieIdByName(movieFromQuery);
-      if (!movie) {
+      const foundMovies = await findMovieIdByName(movieFromQuery);
+      console.log("Matched Movies:", foundMovies);
+      if (!foundMovies || foundMovies.length === 0) {
         return res.json([
           {
             output: `Não achei nada sobre o filme "${movieFromQuery}". Dá uma olhada na programação do site: ${urlConferirHorarios}`,
           },
         ]);
       }
-      movieId = movie.id;
-      movieName = movie.name;
+      movies = foundMovies;
     }
 
     const { targetDate, dayName } = getDayDate(time);
     console.log("Target Date:", targetDate, "Day Name:", dayName);
-    // Query parameters
-    const queryParams: QueryParams = {
-      cinemaId,
-      movieId,
-      dayName,
-      targetDate,
-      status: status,
-    };
-    console.log("Query Params:", queryParams);
-    let results: any[] = [];
-    switch (intent) {
-      case "movie_showtimes":
-        results = await getMovieShowtimes(queryParams);
-        break;
-      case "movie_details":
-        results = await getMovieDetails(queryParams);
-        break;
-      case "ticket_prices":
-        results = await getTicketPrices(queryParams);
-        break;
-      case "cinema_info":
-        results = await getCinemaInfo(queryParams);
-        break;
-      default:
-        return res.json([
-          {
-            output: `Não entendi sua pergunta. Dá uma olhada na programação do site: ${urlConferirHorarios}`,
-          },
-        ]);
+
+    let allResults: any[] = [];
+    let movieNames: string[] = [];
+
+    if (intent === "movie_showtimes" || intent === "movie_details") {
+      // Para cada filme encontrado, buscar os dados e agregar
+      if (movies.length > 0) {
+        for (const movie of movies) {
+          const queryParams: QueryParams = {
+            cinemaId,
+            movieId: movie.id,
+            dayName,
+            targetDate,
+            status: status,
+          };
+          let results: any[] = [];
+          if (intent === "movie_showtimes") {
+            results = await getMovieShowtimes(queryParams);
+          } else {
+            results = await getMovieDetails(queryParams);
+          }
+          if (results.length > 0) {
+            allResults = allResults.concat(results);
+            movieNames.push(movie.name);
+          }
+        }
+      } else {
+        // Se não há filme, busca geral
+        const queryParams: QueryParams = {
+          cinemaId,
+          movieId: null,
+          dayName,
+          targetDate,
+          status: status,
+        };
+        if (intent === "movie_showtimes") {
+          allResults = await getMovieShowtimes(queryParams);
+        } else {
+          allResults = await getMovieDetails(queryParams);
+        }
+      }
+    } else if (intent === "ticket_prices") {
+      const queryParams: QueryParams = {
+        cinemaId,
+        movieId: movies.length === 1 ? movies[0].id : null,
+        dayName,
+        targetDate,
+        status: status,
+      };
+      allResults = await getTicketPrices(queryParams);
+      if (movies.length === 1) movieNames.push(movies[0].name);
+    } else if (intent === "cinema_info") {
+      const queryParams: QueryParams = {
+        cinemaId,
+      };
+      allResults = await getCinemaInfo(queryParams);
     }
 
-    console.log("Results:", results); // Debug log to inspect data
-    if (!results.length) {
+    console.log("Results:", allResults); // Debug log to inspect data
+    if (!allResults.length) {
       return res.json([
         {
           output: `Não achei nada sobre ${
-            movieName ? `o filme "${movieName}"` : "essa solicitação"
+            movieNames.length > 0
+              ? `os filmes "${movieNames.join(", ")}"`
+              : movieFromQuery
+              ? `o filme "${movieFromQuery}"`
+              : "essa solicitação"
           }. Dá uma olhada na programação do site: ${urlConferirHorarios}`,
         },
       ]);
     }
+
     const formattedResults =
       intent === "ticket_prices"
-        ? formatTicketPrices(results)
+        ? formatTicketPrices(allResults)
         : intent === "cinema_info"
-        ? results.map((cinema) => ({
+        ? allResults.map((cinema) => ({
             output: `Informações do cinema:\nNome: ${cinema?.nome}\nEndereço: ${
               cinema?.endereco || "Não cadastrado"
             }\nTelefone: ${cinema?.telefone || "Não cadastrado"}\nSite: ${
               cinema.url_conferir_horarios || "-"
             }\nComprar ingresso: ${cinema.url_comprar_ingresso || "-"}`,
           }))
-        : formatMovieData(results);
+        : formatMovieData(allResults);
     return res.json(formattedResults);
   } catch (error) {
     console.error("Error:", error);

@@ -1,3 +1,4 @@
+
 import * as stringSimilarity from "string-similarity";
 import { query } from "./db";
 
@@ -12,11 +13,12 @@ function normalizeString(str: string): string {
 
 export async function findMovieIdByName(
   name: string
-): Promise<{ id: number; name: string } | null> {
+): Promise<Array<{ id: number; name: string }> | null> {
   const movies = await query("SELECT id, nome FROM filmes", []);
   if (!movies.length) return null;
 
   const normalizedInput = normalizeString(name);
+  const inputWords = normalizedInput.split(" ").filter(Boolean);
   const movieData = movies.map((m: any) => ({
     id: m.id,
     originalName: m.nome,
@@ -30,42 +32,58 @@ export async function findMovieIdByName(
     normalizedMovieNames
   );
 
-  // Check for high-confidence fuzzy match
-  if (matches.bestMatch.rating >= 0.75) {
-    const matchedMovie = movieData.find(
-      (m) => m.normalizedName === matches.bestMatch.target
-    );
-    if (matchedMovie) {
-      return { id: matchedMovie.id, name: matchedMovie.originalName };
-    }
+  // 1. Se houver um match claro (rating >= 0.75 e diferença significativa para o segundo), retorna só ele
+  const sortedRatings = matches.ratings
+    .map((r, idx) => ({ ...r, idx }))
+    .sort((a, b) => b.rating - a.rating);
+  if (
+    sortedRatings[0].rating >= 0.75 &&
+    (sortedRatings.length === 1 || sortedRatings[0].rating > sortedRatings[1].rating + 0.1)
+  ) {
+    const matchedMovie = movieData[sortedRatings[0].idx];
+    return [{ id: matchedMovie.id, name: matchedMovie.originalName }];
   }
 
-  // Fallback: exact prefix match for short inputs
-  if (normalizedInput.length >= 3) {
+  // 2. Matches que contenham todas as palavras do termo informado
+  let resultSet = new Map<number, { id: number; name: string }>();
+  if (inputWords.length > 1) {
+    const allWordsMatches = movieData.filter((m) =>
+      inputWords.every((w) => m.normalizedName.includes(w))
+    );
+    allWordsMatches.forEach((m) => {
+      resultSet.set(m.id, { id: m.id, name: m.originalName });
+    });
+  }
+
+  // 3. Se não for específico, incluir todos os filmes que contenham a palavra-chave principal
+  if (resultSet.size === 0 && normalizedInput.length >= 3) {
+    const keyword = inputWords[0];
+    const substringMatches = movieData.filter((m) =>
+      m.normalizedName.includes(keyword)
+    );
+    substringMatches.forEach((m) => {
+      resultSet.set(m.id, { id: m.id, name: m.originalName });
+    });
+  }
+
+  // 4. Fallback: prefix match para entradas curtas
+  if (resultSet.size === 0 && normalizedInput.length >= 3) {
     const prefixMatches = movieData.filter((m) =>
       m.normalizedName.startsWith(normalizedInput)
     );
-    if (prefixMatches.length === 1) {
-      return { id: prefixMatches[0].id, name: prefixMatches[0].originalName };
-    }
+    prefixMatches.forEach((m) => {
+      resultSet.set(m.id, { id: m.id, name: m.originalName });
+    });
   }
 
-  // Fallback: highest-rated match if above 0.5 and unique
-  if (matches.bestMatch.rating >= 0.5) {
-    const topMatches = matches.ratings
-      .filter((r) => r.rating >= 0.5)
-      .sort((a, b) => b.rating - a.rating);
-    if (
-      topMatches.length === 1 ||
-      topMatches[0].rating > topMatches[1]?.rating + 0.1
-    ) {
-      const matchedMovie = movieData.find(
-        (m) => m.normalizedName === matches.bestMatch.target
-      );
-      if (matchedMovie) {
-        return { id: matchedMovie.id, name: matchedMovie.originalName };
-      }
-    }
+  // 5. Fallback: retorna o melhor match se rating >= 0.5
+  if (resultSet.size === 0 && sortedRatings[0].rating >= 0.5) {
+    const matchedMovie = movieData[sortedRatings[0].idx];
+    return [{ id: matchedMovie.id, name: matchedMovie.originalName }];
+  }
+
+  if (resultSet.size > 0) {
+    return Array.from(resultSet.values());
   }
 
   return null;
