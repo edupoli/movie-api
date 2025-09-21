@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS filmes (
   data_estreia DATE,
   url_poster VARCHAR(255),
   url_trailer VARCHAR(255),
+  movieIdentifier INTEGER,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
