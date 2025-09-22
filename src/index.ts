@@ -4,6 +4,7 @@ import { query } from "./db";
 import { classifyIntent } from "./nlpOpenAI";
 import { findMovieIdByName } from "./fuzzyMatch";
 import { getDayDate } from "./utils/getdaydate";
+import { toZoned, formatBR } from "./utils/date";
 import {
   getMovieDetails,
   getMovieShowtimes,
@@ -31,10 +32,7 @@ interface QueryParams {
 
 function formatDate(date: Date | null): string {
   if (!date) return null;
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
+  return formatBR(date);
 }
 
 function extractDateFromDayString(dayString: string): Date | null {
@@ -55,7 +53,7 @@ function formatMovieData(results: any[]): { output: string }[] {
     "sabado",
     "domingo",
   ];
-  const today = new Date();
+  const today = toZoned(new Date());
   today.setHours(0, 0, 0, 0);
   let output = "";
 

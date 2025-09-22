@@ -1,6 +1,7 @@
 import { Client } from "pg";
 import * as XLSX from "xlsx";
 import { exit } from "process";
+import { formatDateOnly, toZoned } from "./utils/date";
 import * as dotenv from "dotenv";
 dotenv.config();
 
@@ -124,7 +125,7 @@ function converterData(valor: any): string | null {
 
   // Se já for um objeto Date válido
   if (valor instanceof Date && !isNaN(valor.getTime())) {
-    return valor.toISOString().split("T")[0];
+    return formatDateOnly(valor);
   }
 
   // Se for um número serial do Excel (dias desde 01/01/1900)
@@ -140,7 +141,7 @@ function converterData(valor: any): string | null {
     }
 
     if (!isNaN(date.getTime())) {
-      return date.toISOString().split("T")[0];
+      return formatDateOnly(toZoned(date));
     }
   }
 
@@ -151,7 +152,7 @@ function converterData(valor: any): string | null {
     const isoDate = new Date(datePart);
 
     if (!isNaN(isoDate.getTime())) {
-      return isoDate.toISOString().split("T")[0];
+      return formatDateOnly(toZoned(isoDate));
     }
 
     // Tenta formatos brasileiros (DD/MM/YYYY)
@@ -159,7 +160,7 @@ function converterData(valor: any): string | null {
     if (brFormat) {
       const date = new Date(`${brFormat[3]}-${brFormat[2]}-${brFormat[1]}`);
       if (!isNaN(date.getTime())) {
-        return date.toISOString().split("T")[0];
+        return formatDateOnly(toZoned(date));
       }
     }
 
@@ -168,7 +169,7 @@ function converterData(valor: any): string | null {
     if (usFormat) {
       const date = new Date(`${usFormat[3]}-${usFormat[1]}-${usFormat[2]}`);
       if (!isNaN(date.getTime())) {
-        return date.toISOString().split("T")[0];
+        return formatDateOnly(toZoned(date));
       }
     }
   }

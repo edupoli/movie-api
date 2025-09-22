@@ -17,6 +17,8 @@ const pool = new Pool({
 export async function query(text: string, params: any[] = []) {
   const client = await pool.connect();
   try {
+    // Garantir timezone da sessão no Postgres para evitar divergências
+    await client.query("SET TIME ZONE 'America/Sao_Paulo'");
     console.log("Executing query:", text, params);
     const res = await client.query(text, params);
     return res.rows;

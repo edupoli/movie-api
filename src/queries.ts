@@ -1,4 +1,5 @@
 import { query } from "./db";
+import { formatDateOnly } from "./utils/date";
 
 interface QueryParams {
   cinemaId: number;
@@ -26,6 +27,9 @@ export const getMovieShowtimes = async (params: QueryParams) => {
     targetDate = new Date(),
     status = null,
   } = params;
+
+  const targetDateStr =
+    formatDateOnly(targetDate) || formatDateOnly(new Date());
 
   console.log("params", params);
 
@@ -81,8 +85,10 @@ export const getMovieShowtimes = async (params: QueryParams) => {
           : "AND p.status != 'inativo'"
       }
       ${movieId ? "AND p.id_filme = $" + (status !== null ? "3" : "2") : ""}
-      AND $${status !== null ? (movieId ? "4" : "3") : movieId ? "3" : "2"} 
-        BETWEEN p.semana_inicio AND p.semana_fim
+      AND $${
+        status !== null ? (movieId ? "4" : "3") : movieId ? "3" : "2"
+      }::date 
+        BETWEEN p.semana_inicio::date AND p.semana_fim::date
       AND p.semana_fim >= CURRENT_DATE
     `;
   }
@@ -100,7 +106,7 @@ export const getMovieShowtimes = async (params: QueryParams) => {
   }
 
   if (dayName && daysWeek.includes(dayName)) {
-    queryParams.push(targetDate);
+    queryParams.push(targetDateStr);
   }
 
   // Executar a query

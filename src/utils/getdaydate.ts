@@ -1,4 +1,4 @@
-import { toZonedTime } from "date-fns-tz";
+import { toZoned } from "./date";
 
 export function getDayDate(day: string | null): {
   dayName: string | null;
@@ -8,10 +8,8 @@ export function getDayDate(day: string | null): {
     return { dayName: null, targetDate: null };
   }
 
-  const timeZone = "America/Sao_Paulo";
-
-  // Data/hora atual no fuso de Brasília
-  const now = toZonedTime(new Date(), timeZone);
+  // Data/hora atual no fuso de Brasília (America/Sao_Paulo)
+  const now = toZoned(new Date());
   now.setHours(0, 0, 0, 0); // Zera no horário de Brasília
 
   const currentYear = now.getFullYear();
@@ -58,7 +56,7 @@ export function getDayDate(day: string | null): {
   }
 
   if (normalizedDay === "amanha") {
-    const targetDate = toZonedTime(new Date(now), timeZone);
+    const targetDate = new Date(now.getTime());
     targetDate.setDate(now.getDate() + 1);
     return { dayName: reverseDayMap[targetDate.getDay()], targetDate };
   }
@@ -77,7 +75,7 @@ export function getDayDate(day: string | null): {
   // Dias da semana
   if (normalizedDay in dayMap) {
     const targetDay = dayMap[normalizedDay];
-    const targetDate = toZonedTime(new Date(now), timeZone);
+    const targetDate = new Date(now.getTime());
     const daysToAdd = (targetDay - today + 7) % 7;
     const offset = daysToAdd === 0 ? 7 : daysToAdd;
     targetDate.setDate(now.getDate() + offset);
@@ -93,15 +91,13 @@ export function getDayDate(day: string | null): {
 
   if (fullDateMatch) {
     const [, dayStr, monthStr, yearStr] = fullDateMatch;
-    targetDate = toZonedTime(
-      new Date(parseInt(yearStr), parseInt(monthStr) - 1, parseInt(dayStr)),
-      timeZone
+    targetDate = toZoned(
+      new Date(parseInt(yearStr), parseInt(monthStr) - 1, parseInt(dayStr))
     );
   } else if (shortDateMatch) {
     const [, dayStr, monthStr] = shortDateMatch;
-    targetDate = toZonedTime(
-      new Date(currentYear, parseInt(monthStr) - 1, parseInt(dayStr)),
-      timeZone
+    targetDate = toZoned(
+      new Date(currentYear, parseInt(monthStr) - 1, parseInt(dayStr))
     );
     if (targetDate < now) {
       targetDate.setFullYear(currentYear + 1);
@@ -109,25 +105,18 @@ export function getDayDate(day: string | null): {
   } else if (dayOnlyMatch) {
     const [, dayStr] = dayOnlyMatch;
     const dayNum = parseInt(dayStr);
-    targetDate = toZonedTime(
-      new Date(currentYear, currentMonth, dayNum),
-      timeZone
-    );
+    targetDate = toZoned(new Date(currentYear, currentMonth, dayNum));
 
     if (targetDate <= now) {
-      targetDate = toZonedTime(
-        new Date(currentYear, currentMonth + 1, dayNum),
-        timeZone
-      );
+      targetDate = toZoned(new Date(currentYear, currentMonth + 1, dayNum));
     }
 
-    const twoWeeksLater = toZonedTime(new Date(now), timeZone);
+    const twoWeeksLater = new Date(now.getTime());
     twoWeeksLater.setDate(now.getDate() + 14);
 
     if (targetDate > twoWeeksLater) {
-      const currentMonthOption = toZonedTime(
-        new Date(currentYear, currentMonth, dayNum),
-        timeZone
+      const currentMonthOption = toZoned(
+        new Date(currentYear, currentMonth, dayNum)
       );
       if (currentMonthOption > now) {
         targetDate = currentMonthOption;
@@ -136,7 +125,7 @@ export function getDayDate(day: string | null): {
   }
 
   if (targetDate && !isNaN(targetDate.getTime())) {
-    const twoMonthsLater = toZonedTime(new Date(now), timeZone);
+    const twoMonthsLater = new Date(now.getTime());
     twoMonthsLater.setMonth(now.getMonth() + 2);
 
     if (targetDate >= now && targetDate <= twoMonthsLater) {

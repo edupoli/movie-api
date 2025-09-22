@@ -12,8 +12,8 @@ function normalizeString(str: string): string {
 
 export async function findMovieIdByName(
   name: string
-): Promise<Array<{ id: number; name: string }> | null> {
-  const movies = await query("SELECT id, nome FROM filmes", []);
+): Promise<Array<{ id: number; name: string; data_estreia: Date }> | null> {
+  const movies = await query("SELECT id, nome, data_estreia FROM filmes", []);
   if (!movies.length) return null;
 
   const normalizedInput = normalizeString(name);
@@ -22,6 +22,7 @@ export async function findMovieIdByName(
     id: m.id,
     originalName: m.nome,
     normalizedName: normalizeString(m.nome),
+    data_estreia: m.data_estreia,
   }));
 
   // Fuzzy matching
@@ -41,17 +42,30 @@ export async function findMovieIdByName(
       sortedRatings[0].rating > sortedRatings[1].rating + 0.1)
   ) {
     const matchedMovie = movieData[sortedRatings[0].idx];
-    return [{ id: matchedMovie.id, name: matchedMovie.originalName }];
+    return [
+      {
+        id: matchedMovie.id,
+        name: matchedMovie.originalName,
+        data_estreia: matchedMovie.data_estreia,
+      },
+    ];
   }
 
   // 2. Matches que contenham todas as palavras do termo informado
-  let resultSet = new Map<number, { id: number; name: string }>();
+  let resultSet = new Map<
+    number,
+    { id: number; name: string; data_estreia: Date }
+  >();
   if (inputWords.length > 1) {
     const allWordsMatches = movieData.filter((m) =>
       inputWords.every((w) => m.normalizedName.includes(w))
     );
     allWordsMatches.forEach((m) => {
-      resultSet.set(m.id, { id: m.id, name: m.originalName });
+      resultSet.set(m.id, {
+        id: m.id,
+        name: m.originalName,
+        data_estreia: m.data_estreia,
+      });
     });
   }
 
@@ -62,7 +76,11 @@ export async function findMovieIdByName(
       m.normalizedName.includes(keyword)
     );
     substringMatches.forEach((m) => {
-      resultSet.set(m.id, { id: m.id, name: m.originalName });
+      resultSet.set(m.id, {
+        id: m.id,
+        name: m.originalName,
+        data_estreia: m.data_estreia,
+      });
     });
   }
 
@@ -72,14 +90,24 @@ export async function findMovieIdByName(
       m.normalizedName.startsWith(normalizedInput)
     );
     prefixMatches.forEach((m) => {
-      resultSet.set(m.id, { id: m.id, name: m.originalName });
+      resultSet.set(m.id, {
+        id: m.id,
+        name: m.originalName,
+        data_estreia: m.data_estreia,
+      });
     });
   }
 
   // 5. Fallback: retorna o melhor match se rating >= 0.5
   if (resultSet.size === 0 && sortedRatings[0].rating >= 0.5) {
     const matchedMovie = movieData[sortedRatings[0].idx];
-    return [{ id: matchedMovie.id, name: matchedMovie.originalName }];
+    return [
+      {
+        id: matchedMovie.id,
+        name: matchedMovie.originalName,
+        data_estreia: matchedMovie.data_estreia,
+      },
+    ];
   }
 
   if (resultSet.size > 0) {
