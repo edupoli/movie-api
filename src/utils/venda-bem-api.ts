@@ -10,11 +10,11 @@ dayjs.extend(customParseFormat);
 
 // ================== CONFIG DB ==================
 const pool = new Pool({
-  user: "mooviai",
-  host: "localhost",
-  database: "cinemas",
-  password: "ServerMoovia123",
-  port: 30100,
+  host: process.env.DB_HOST || "5.161.113.232",
+  database: process.env.DB_NAME || "cinemas",
+  user: process.env.DB_USER || "mooviai",
+  password: process.env.DB_PASSWORD || "ServerMoovia123",
+  port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : 30100,
 });
 
 // ================== HELPERS ==================

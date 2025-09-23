@@ -17,9 +17,9 @@ interface DbConfig {
 const DB_CONFIG: DbConfig = {
   host: process.env.DB_HOST || "5.161.113.232",
   database: process.env.DB_NAME || "cinemas",
-  user: process.env.DB_USER || "postgres",
-  password: process.env.DB_PASSWORD || "postgres",
-  port: process.env.DB_PORT || "5432",
+  user: process.env.DB_USER || "mooviai",
+  password: process.env.DB_PASSWORD || "ServerMoovia123",
+  port: process.env.DB_PORT || "30100",
 };
 
 // Interfaces for data structures
