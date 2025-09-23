@@ -13,6 +13,8 @@ import {
 } from "./queries";
 import * as dotenv from "dotenv";
 dotenv.config();
+import { syncVelox } from "./utils/velox-api";
+import { syncVendaBem } from "./utils/venda-bem-api";
 
 const app = express();
 app.use(express.json());
@@ -321,6 +323,37 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
     res
       .status(500)
       .json([{ output: "Ocorreu um erro ao processar a consulta." }]);
+  }
+});
+
+// ENDPOINTS DE SINCRONIZAÇÃO
+// Rota: /sync/velox -> Executa syncVelox e retorna resumo
+app.get("/sync/velox", async (req, res) => {
+  try {
+    await syncVelox();
+
+    res.json({
+      message: "Sincronização Velox concluída",
+    });
+  } catch (error) {
+    console.error("Erro ao executar syncVelox:", error);
+    res.status(500).json({ error: "Erro durante sincronização Velox" });
+  }
+});
+
+// Rota: /sync/multicine -> Executa syncVendaBem (main) e retorna resumo por cinema
+app.get("/sync/multicine", async (req, res) => {
+  try {
+    await syncVendaBem();
+
+    res.json({
+      message: "Sincronização Multicine/VendaBem concluída",
+    });
+  } catch (error) {
+    console.error("Erro ao executar syncVendaBem:", error);
+    res
+      .status(500)
+      .json({ error: "Erro durante sincronização Multicine/VendaBem" });
   }
 });
 

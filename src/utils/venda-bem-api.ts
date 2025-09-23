@@ -303,4 +303,7 @@ async function main() {
   }
 }
 
-main();
+//main();
+
+// Export functions para uso via endpoint
+export { syncFilmes, main as syncVendaBem };

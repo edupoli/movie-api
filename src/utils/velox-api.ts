@@ -164,6 +164,14 @@ async function insertOrUpdateMovie(movie: any, details: any) {
   return pool.query(insertFilmeQuery, values);
 }
 
+function detailsImageOrNull(det: any) {
+  return det.image?.[0]?.contentUrl || null;
+}
+
+function detailsTrailerOrNull(det: any) {
+  return det.trailer?.[0]?.contentUrl || null;
+}
+
 async function syncVelox() {
   // 1. Buscar e atualizar filmes em cartaz e em breve
   const filmes = await fetchAllMovies();
@@ -171,7 +179,49 @@ async function syncVelox() {
   for (const filme of filmes) {
     const det = await fetchMovieDetails(filme.movieIdentifier);
     if (!det) continue;
-    await insertOrUpdateMovie(filme, det);
+
+    // Evita consumir valores da sequence quando o filme já existe.
+    // Primeiro tenta encontrar via fuzzy match; se encontrado, faz UPDATE;
+    // se não, faz INSERT.
+    try {
+      const encontrados = await findMovieIdByName(det.name);
+      const valuesCommon = [
+        det.abstract || "",
+        parseDurationToMinutes(det.duration),
+        det.typicalAgeRange,
+        det.genre,
+        det.director?.map((d: any) => d.name).join(", ") || null,
+        dayjs(filme.releaseDate).format("YYYY-MM-DD"),
+        filme.url || detailsImageOrNull(det),
+        filme.trailerURL || detailsTrailerOrNull(det),
+      ];
+
+      if (encontrados && encontrados.length > 0) {
+        // Atualiza registro existente (não consome sequence)
+        const updateQuery = `
+          UPDATE filmes SET
+            sinopse = $1,
+            duracao = $2,
+            classificacao = $3,
+            genero = $4,
+            diretor = $5,
+            data_estreia = $6,
+            url_poster = $7,
+            url_trailer = $8
+          WHERE id = $9
+          RETURNING id, data_estreia;
+        `;
+        const updateValues = [...valuesCommon, encontrados[0].id];
+        await pool.query(updateQuery, updateValues);
+      } else {
+        // Não existe: insere normalmente
+        await insertOrUpdateMovie(filme, det);
+      }
+    } catch (err) {
+      console.error("Erro ao atualizar/inserir filme (evitar sequência):", err);
+      // fallback: tenta inserir para não perder o filme
+      await insertOrUpdateMovie(filme, det);
+    }
   }
 
   console.log("Iniciando sincronização Velox...");
@@ -312,4 +362,7 @@ async function syncVelox() {
   console.log("Sincronização Velox concluída!");
 }
 
-syncVelox();
+//syncVelox();
+
+// Export para uso via endpoint
+export { syncVelox };
