@@ -3,17 +3,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: postgres-mooviai
+    container_name: postgres-mooviai-homolog
     restart: unless-stopped
     ports:
-      - "30100:5432"
+      - "30500:5432"
     environment:
       - POSTGRES_USER=mooviai
       - POSTGRES_PASSWORD=ServerMoovia123
       - POSTGRES_DB=cinemas
       - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 --auth-local=scram-sha-256
     volumes:
-      - pgdata-vector:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/00-init.sql
     command: >
       postgres
