@@ -9,7 +9,7 @@ const openai = new OpenAI({
 
 interface IntentResponse {
   intent: "movie_showtimes" | "movie_details" | "ticket_prices" | "cinema_info";
-  time: string | null;
+  time: string[] | null; // Agora é um array de strings para suportar múltiplos dias
   movie: string | null;
   status: string | null;
 }
@@ -34,8 +34,17 @@ Intenções possíveis:
 - "cinema_info": Usuário quer informações sobre o cinema, como endereço, localização, telefone, horário de atendimento, acessibilidade, estacionamento, contato, etc. (ex.: "O usuário quer saber o endereço do cinema", "O usuário está perguntando qual o telefone do cinema", "O usuário quer saber o horário de funcionamento do cinema").
 
 Parâmetros:
-- time: Indica o contexto temporal. Use "hoje" para menções a hoje ou "hj", "amanha" para amanhã, "semana" para próxima semana ou "semana que vem", ou o nome do dia em português sem "feira" (ex.: "quinta" para "quinta-feira" ou "a partir de quinta-feira"). O usuario tambem pode menciar o dia de forma numerica como por exemplo dia 25 ou  dia 02/07 nesses casos voce deve extrair para o parametro time apenas a data em formato numerico  etc.. Se não houver menção temporal, use null.
-- ATENÇÃO: Se a mensagem do usuário mencionar explicitamente programação, horários, sessões ou exibição para o "final de semana", "fim de semana", "sábado e domingo", "sábados e domingos" ou variações, defina o parâmetro time como "final_de_semana" (exatamente assim, com underline). Se a menção for à semana inteira, use "semana".
+- time: Indica o contexto temporal. Retorna um array de strings com os dias mencionados. Regras:
+  - Para "hoje" ou "hj": use ["hoje"]
+  - Para "amanhã": use ["amanha"]
+  - Para combinações como "hoje e amanhã": use ["hoje", "amanha"]
+  - Para dias da semana: use o nome do dia em português sem "feira" (ex.: ["quinta"])
+  - Para combinações de dias da semana: use um array com os dias (ex.: ["segunda", "terca"])
+  - Para datas numéricas: use o formato como mencionado (ex.: ["25/07"])
+  - Para "final de semana", "fim de semana", "sábado e domingo": use ["sabado", "domingo"]
+  - Para "semana inteira" ou "semana que vem": use ["semana"]
+  - Se não houver menção temporal: use null
+IMPORTANTE: Quando a mensagem mencionar múltiplos dias (ex.: "hoje e amanhã", "segunda e terça", etc), SEMPRE retorne um array com todos os dias mencionados.
 - movie: Extraia o texto entre aspas (ex.: "Stich" → "Stich"). Se não houver aspas ou menção a um filme específico, use null.
 - status: Identifique menções a "em cartaz", "em breve" ou "pre venda" (aceite "pré-venda" ou "pre-venda"). Se não houver menção explícita a um desses status, use null.
 
@@ -52,6 +61,18 @@ Regras:
 Exemplos:
 - Mensagem: "O usuário quer saber qual é a classificação indicativa do filme 'Elio'."
   Resposta: { "intent": "movie_details", "time": null, "movie": "Elio", "status": null }
+- Mensagem: "O usuário está perguntando sobre a exibição do filme 'Stich' hoje e amanhã."
+  Resposta: { "intent": "movie_showtimes", "time": ["hoje", "amanha"], "movie": "Stich", "status": null }
+- Mensagem: "O usuário está perguntando sobre a programação de quinta e sexta."
+  Resposta: { "intent": "movie_showtimes", "time": ["quinta", "sexta"], "movie": null, "status": null }
+- Mensagem: "O usuário está perguntando sobre a programação do final de semana."
+  Resposta: { "intent": "movie_showtimes", "time": ["sabado", "domingo"], "movie": null, "status": null }
+- Mensagem: "O usuário está perguntando sobre os valores dos ingressos amanhã."
+  Resposta: { "intent": "ticket_prices", "time": ["amanha"], "movie": null, "status": null }
+- Mensagem: "O usuário está perguntando se ainda há promoções na segunda e terça."
+  Resposta: { "intent": "ticket_prices", "time": ["segunda", "terca"], "movie": null, "status": null }
+- Mensagem: "O usuário está perguntando sobre o endereço do cinema."
+  Resposta: { "intent": "cinema_info", "time": null, "movie": null, "status": null }
 - Mensagem: "O usuário quer saber qual é a data de estreia do filme 'Stich'."
   Resposta: { "intent": "movie_details", "time": null, "movie": "Stich", "status": null }
 - Mensagem: "O usuário está perguntando sobre o gênero do filme 'Missão Impossível'."

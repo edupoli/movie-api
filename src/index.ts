@@ -27,9 +27,9 @@ interface SearchPayload {
 interface QueryParams {
   cinemaId: number;
   movieId?: number | null;
-  dayName?: string;
-  targetDate?: Date;
-  status?: string;
+  dayName?: string | string[] | null;
+  targetDate?: Date | Date[] | null;
+  status?: string | null;
 }
 
 function formatDate(date: Date | null): string {
@@ -230,7 +230,21 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
       movies = foundMovies;
     }
 
+    // Processa os dias solicitados
     const { targetDate, dayName } = getDayDate(time);
+
+    // Se for array de dias, garante que dayName seja array
+    const processedDayName = Array.isArray(dayName)
+      ? dayName
+      : dayName
+      ? [dayName]
+      : null;
+    const processedTargetDate = Array.isArray(targetDate)
+      ? targetDate
+      : targetDate
+      ? [targetDate]
+      : null;
+
     console.log("Target Date:", targetDate, "Day Name:", dayName);
 
     let allResults: any[] = [];
@@ -243,8 +257,8 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
           const queryParams: QueryParams = {
             cinemaId,
             movieId: movie.id,
-            dayName,
-            targetDate,
+            dayName: processedDayName,
+            targetDate: processedTargetDate,
             status: status,
           };
           let results: any[] = [];
@@ -263,8 +277,8 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
         const queryParams: QueryParams = {
           cinemaId,
           movieId: null,
-          dayName,
-          targetDate,
+          dayName: processedDayName,
+          targetDate: processedTargetDate,
           status: status,
         };
         if (intent === "movie_showtimes") {

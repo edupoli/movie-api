@@ -32,4 +32,49 @@ export function formatBR(date: Date | null | undefined): string | null {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+export function processMultipleDays(days: string[] | null): string[] | null {
+  if (!days || days.length === 0) return null;
+
+  const today = new Date();
+  const result = new Set<string>();
+
+  days.forEach((day) => {
+    switch (day.toLowerCase()) {
+      case "hoje":
+        const weekDays = [
+          "domingo",
+          "segunda",
+          "terca",
+          "quarta",
+          "quinta",
+          "sexta",
+          "sabado",
+        ];
+        result.add(weekDays[today.getDay()]);
+        break;
+      case "amanha":
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        result.add(weekDays[tomorrow.getDay()]);
+        break;
+      default:
+        if (
+          [
+            "segunda",
+            "terca",
+            "quarta",
+            "quinta",
+            "sexta",
+            "sabado",
+            "domingo",
+          ].includes(day.toLowerCase())
+        ) {
+          result.add(day.toLowerCase());
+        }
+    }
+  });
+
+  return result.size > 0 ? Array.from(result) : null;
+}
+
 export { TIME_ZONE };

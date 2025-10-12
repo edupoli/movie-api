@@ -1,13 +1,31 @@
 import { toZoned } from "./date";
 
-export function getDayDate(day: string | null): {
-  dayName: string | null;
-  targetDate: Date | null;
+export function getDayDate(day: string | string[] | null): {
+  dayName: string | string[] | null;
+  targetDate: Date | Date[] | null;
 } {
   if (!day) {
     return { dayName: null, targetDate: null };
   }
 
+  // Se for um array de dias, processa cada um
+  if (Array.isArray(day)) {
+    const days = day.map((d) => getSingleDayDate(d));
+    return {
+      dayName: days.map((d) => d.dayName).filter((d) => d !== null) as string[],
+      targetDate: days
+        .map((d) => d.targetDate)
+        .filter((d) => d !== null) as Date[],
+    };
+  }
+
+  return getSingleDayDate(day);
+}
+
+function getSingleDayDate(day: string): {
+  dayName: string | null;
+  targetDate: Date | null;
+} {
   // Data/hora atual no fuso de Brasília (America/Sao_Paulo)
   const now = toZoned(new Date());
   now.setHours(0, 0, 0, 0); // Zera no horário de Brasília
