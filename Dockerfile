@@ -20,6 +20,6 @@ COPY --from=build /app/dist ./dist
 RUN npm install -g pnpm && pnpm install --prod
 
 ENV NODE_ENV=production
-EXPOSE 8000
+EXPOSE 9000
 
 CMD ["node", "dist/index.js"]
