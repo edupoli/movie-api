@@ -136,20 +136,6 @@ async function syncFilmes(idCinema: number, url: string, payload: any) {
           dataEstreia = filmesEncontrados[0].data_estreia;
         } else {
           // Filme não existe, fazer insert
-          const insertFilmeQuery = `
-            INSERT INTO filmes
-              (nome, sinopse, duracao, classificacao, genero, url_poster, url_trailer, data_estreia)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-            ON CONFLICT (nome) DO UPDATE SET
-              sinopse = EXCLUDED.sinopse,
-              duracao = EXCLUDED.duracao,
-              classificacao = EXCLUDED.classificacao,
-              genero = EXCLUDED.genero,
-              url_poster = EXCLUDED.url_poster,
-              url_trailer = EXCLUDED.url_trailer,
-              data_estreia = EXCLUDED.data_estreia
-            RETURNING id, data_estreia;
-          `;
           const values = [
             nomeFormatado,
             filme.sinopse || "",
@@ -161,9 +147,46 @@ async function syncFilmes(idCinema: number, url: string, payload: any) {
             dayjs(filme.data_estreia, "DD/MM/YYYY").format("YYYY-MM-DD"),
           ];
 
-          const { rows } = await pool.query(insertFilmeQuery, values);
-          idFilme = rows[0].id;
-          dataEstreia = rows[0].data_estreia;
+          const insertFilmeQuery = `
+            INSERT INTO filmes
+              (nome, sinopse, duracao, classificacao, genero, url_poster, url_trailer, data_estreia)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+            RETURNING id, data_estreia;
+          `;
+
+          try {
+            const { rows } = await pool.query(insertFilmeQuery, values);
+            idFilme = rows[0].id;
+            dataEstreia = rows[0].data_estreia;
+          } catch (insertError: any) {
+            // Se der erro de duplicata (unique violation), busca o filme existente
+            if (insertError.code === "23505") {
+              const selectQuery = `SELECT id, data_estreia FROM filmes WHERE nome = $1`;
+              const { rows } = await pool.query(selectQuery, [nomeFormatado]);
+              if (rows.length > 0) {
+                idFilme = rows[0].id;
+                dataEstreia = rows[0].data_estreia;
+
+                // Atualiza os dados do filme existente
+                const updateQuery = `
+                  UPDATE filmes SET
+                    sinopse = $2,
+                    duracao = $3,
+                    classificacao = $4,
+                    genero = $5,
+                    url_poster = $6,
+                    url_trailer = $7,
+                    data_estreia = $8
+                  WHERE nome = $1
+                `;
+                await pool.query(updateQuery, values);
+              } else {
+                throw insertError;
+              }
+            } else {
+              throw insertError;
+            }
+          }
         }
 
         // Programação
@@ -178,14 +201,6 @@ async function syncFilmes(idCinema: number, url: string, payload: any) {
             (id_filme, id_cinema, status, data_estreia, semana_inicio, semana_fim,
              segunda, terca, quarta, quinta, sexta, sabado, domingo)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-          ON CONFLICT (id_filme, id_cinema) DO UPDATE SET
-             segunda = EXCLUDED.segunda,
-             terca = EXCLUDED.terca,
-             quarta = EXCLUDED.quarta,
-             quinta = EXCLUDED.quinta,
-             sexta = EXCLUDED.sexta,
-             sabado = EXCLUDED.sabado,
-             domingo = EXCLUDED.domingo;
         `;
 
         const progValues = [
@@ -204,7 +219,31 @@ async function syncFilmes(idCinema: number, url: string, payload: any) {
           sessoesSemana.domingo,
         ];
 
-        await pool.query(insertProgQuery, progValues);
+        try {
+          await pool.query(insertProgQuery, progValues);
+        } catch (progError: any) {
+          // Se der erro de duplicata (unique violation), atualiza
+          if (progError.code === "23505") {
+            const updateProgQuery = `
+              UPDATE programacao SET
+                status = $3,
+                data_estreia = $4,
+                semana_inicio = $5,
+                semana_fim = $6,
+                segunda = $7,
+                terca = $8,
+                quarta = $9,
+                quinta = $10,
+                sexta = $11,
+                sabado = $12,
+                domingo = $13
+              WHERE id_filme = $1 AND id_cinema = $2
+            `;
+            await pool.query(updateProgQuery, progValues);
+          } else {
+            throw progError;
+          }
+        }
       } catch (err) {
         console.error(
           `Erro ao processar filme ${nomeFilme} do cinema ${idCinema}:`,
