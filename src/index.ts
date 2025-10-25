@@ -45,10 +45,7 @@ function extractDateFromDayString(dayString: string): Date | null {
   return new Date(year, month - 1, day);
 }
 
-function formatMovieData(
-  results: any[],
-  intent?: string
-): { output: string }[] {
+function formatMovieData(results: any[]): { output: string }[] {
   const daysWeek = [
     "segunda",
     "terca",
@@ -89,13 +86,6 @@ function formatMovieData(
           value: movie[dayName] || "",
         }))
         .filter((entry) => entry.value && entry.date && entry.date >= today)
-        .filter((entry) => {
-          // Se a intent for movie_showtimes, filtrar apenas dias com horários (que contêm ":")
-          if (intent === "movie_showtimes") {
-            return entry.value.includes(":");
-          }
-          return true;
-        })
         .sort((a, b) => {
           if (!a.date || !b.date) return 0;
           return a.date.getTime() - b.date.getTime();
@@ -340,7 +330,7 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
               cinema.url_conferir_horarios || "-"
             }\nComprar ingresso: ${cinema.url_comprar_ingresso || "-"}`,
           }))
-        : formatMovieData(allResults, intent);
+        : formatMovieData(allResults);
     return res.json(formattedResults);
   } catch (error) {
     console.error("Error:", error);
