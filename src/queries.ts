@@ -75,7 +75,7 @@ export const getMovieShowtimes = async (params: QueryParams) => {
 
   if (dayName === null) {
     // Semana completa: busca todos os dias
-    sql = `SELECT f.nome, p.status, p.semana_inicio, p.semana_fim, p.segunda, p.terca, p.quarta, p.quinta, p.sexta, p.sabado, p.domingo
+    sql = `SELECT f.nome, p.status, p.data_estreia, p.semana_inicio, p.semana_fim, p.segunda, p.terca, p.quarta, p.quinta, p.sexta, p.sabado, p.domingo
       FROM programacao p
       JOIN filmes f ON p.id_filme = f.id
       JOIN cinemas c ON p.id_cinema = c.id
@@ -94,7 +94,7 @@ export const getMovieShowtimes = async (params: QueryParams) => {
     // Múltiplos dias específicos
     const validDays = dayName.filter((day) => daysWeek.includes(day));
     if (validDays.length > 0) {
-      sql = `SELECT f.nome, p.status, p.semana_inicio, p.semana_fim, ${buildDaySelection(
+      sql = `SELECT f.nome, p.status, p.data_estreia, p.semana_inicio, p.semana_fim, ${buildDaySelection(
         validDays
       )}
         FROM programacao p
@@ -119,7 +119,7 @@ export const getMovieShowtimes = async (params: QueryParams) => {
     }
   } else if (typeof dayName === "string" && daysWeek.includes(dayName)) {
     // Dia específico
-    sql = `SELECT f.nome, p.status, p.semana_inicio, p.semana_fim, p.${dayName}
+    sql = `SELECT f.nome, p.status, p.data_estreia, p.semana_inicio, p.semana_fim, p.${dayName}
       FROM programacao p
       JOIN filmes f ON p.id_filme = f.id
       JOIN cinemas c ON p.id_cinema = c.id

@@ -45,7 +45,10 @@ function extractDateFromDayString(dayString: string): Date | null {
   return new Date(year, month - 1, day);
 }
 
-function formatMovieData(results: any[]): { output: string }[] {
+function formatMovieData(
+  results: any[],
+  intent?: string
+): { output: string }[] {
   const daysWeek = [
     "segunda",
     "terca",
@@ -68,47 +71,62 @@ function formatMovieData(results: any[]): { output: string }[] {
 
   // Alterado para usar sortedResults em vez de results
   sortedResults.forEach((movie, index) => {
-    const hasScheduleData = daysWeek.some((day) => movie[day]);
-
-    if (hasScheduleData) {
-      const fixedFields = {
+    // Verifica se é movie_showtimes e status "em breve"
+    if (intent === "movie_showtimes" && movie.status === "em breve") {
+      // Retorna apenas nome, status e data_estreia
+      const simplifiedFields = {
         nome: movie.nome,
         status: movie.status,
-        semana_inicio: formatDate(movie.semana_inicio),
-        semana_fim: formatDate(movie.semana_fim),
         data_estreia: formatDate(movie.data_estreia),
       };
 
-      const dayEntries = daysWeek
-        .map((dayName) => ({
-          dayName,
-          date: extractDateFromDayString(movie[dayName] || ""),
-          value: movie[dayName] || "",
-        }))
-        .filter((entry) => entry.value && entry.date && entry.date >= today)
-        .sort((a, b) => {
-          if (!a.date || !b.date) return 0;
-          return a.date.getTime() - b.date.getTime();
-        });
-
-      Object.entries(fixedFields).forEach(([key, value]) => {
+      Object.entries(simplifiedFields).forEach(([key, value]) => {
         if (value) output += `${key} ${value}\n`;
       });
-
-      dayEntries.forEach((entry) => {
-        output += `${entry.dayName} ${entry.value}\n`;
-      });
     } else {
-      Object.entries(movie).forEach(([key, value]) => {
-        if (
-          key === "semana_inicio" ||
-          key === "semana_fim" ||
-          key === "data_estreia"
-        ) {
-          value = formatDate(value as Date);
-        }
-        output += `${key}: ${value}\n`;
-      });
+      // Lógica original para outros casos
+      const hasScheduleData = daysWeek.some((day) => movie[day]);
+
+      if (hasScheduleData) {
+        const fixedFields = {
+          nome: movie.nome,
+          status: movie.status,
+          semana_inicio: formatDate(movie.semana_inicio),
+          semana_fim: formatDate(movie.semana_fim),
+          data_estreia: formatDate(movie.data_estreia),
+        };
+
+        const dayEntries = daysWeek
+          .map((dayName) => ({
+            dayName,
+            date: extractDateFromDayString(movie[dayName] || ""),
+            value: movie[dayName] || "",
+          }))
+          .filter((entry) => entry.value && entry.date && entry.date >= today)
+          .sort((a, b) => {
+            if (!a.date || !b.date) return 0;
+            return a.date.getTime() - b.date.getTime();
+          });
+
+        Object.entries(fixedFields).forEach(([key, value]) => {
+          if (value) output += `${key} ${value}\n`;
+        });
+
+        dayEntries.forEach((entry) => {
+          output += `${entry.dayName} ${entry.value}\n`;
+        });
+      } else {
+        Object.entries(movie).forEach(([key, value]) => {
+          if (
+            key === "semana_inicio" ||
+            key === "semana_fim" ||
+            key === "data_estreia"
+          ) {
+            value = formatDate(value as Date);
+          }
+          output += `${key}: ${value}\n`;
+        });
+      }
     }
 
     if (index < sortedResults.length - 1) {
@@ -330,7 +348,7 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
               cinema.url_conferir_horarios || "-"
             }\nComprar ingresso: ${cinema.url_comprar_ingresso || "-"}`,
           }))
-        : formatMovieData(allResults);
+        : formatMovieData(allResults, intent);
     return res.json(formattedResults);
   } catch (error) {
     console.error("Error:", error);
