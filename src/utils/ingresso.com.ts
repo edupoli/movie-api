@@ -116,8 +116,14 @@ async function insertOrUpdateMovie(movie: any, idCinema: number) {
   ]);
 
   const dataEstreia = movie.premiereDate?.localDate
-    ? dayjs(movie.premiereDate.localDate).format("YYYY-MM-DD")
+    ? movie.premiereDate.localDate.split("T")[0]
     : null;
+
+  // Tratar classificação indicativa
+  const classificacao =
+    movie.contentRating === "Verifique a Classificação"
+      ? "Classificação indicativa não disponível"
+      : movie.contentRating;
 
   const generos = Array.isArray(movie.genres) ? movie.genres.join(", ") : "";
   const duracao = movie.duration ? parseFloat(movie.duration) : null;
@@ -137,7 +143,7 @@ async function insertOrUpdateMovie(movie: any, idCinema: number) {
       movie.title,
       movie.synopsis || "",
       duracao,
-      movie.contentRating,
+      classificacao,
       generos,
       movie.director || movie.directors || "",
       movie.cast || "",
@@ -164,7 +170,7 @@ async function insertOrUpdateMovie(movie: any, idCinema: number) {
       movie.title,
       movie.synopsis || "",
       duracao,
-      movie.contentRating,
+      classificacao,
       generos,
       movie.director || movie.directors || "",
       movie.cast || "",

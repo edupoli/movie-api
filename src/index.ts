@@ -74,9 +74,10 @@ function formatMovieData(
   sortedResults.forEach((movie, index) => {
     // Verifica se é movie_showtimes e status "em breve"
     if (intent === "movie_showtimes" && movie.status === "em breve") {
-      // Retorna apenas nome, status e data_estreia
+      // Retorna apenas nome, classificacao, status e data_estreia
       const simplifiedFields = {
         nome: movie.nome,
+        classificacao_indicativa: movie.classificacao,
         status: movie.status,
         data_estreia: formatDate(movie.data_estreia),
       };
@@ -91,6 +92,8 @@ function formatMovieData(
       if (hasScheduleData) {
         const fixedFields = {
           nome: movie.nome,
+          classificacao_indicativa:
+            intent === "movie_showtimes" ? movie.classificacao : undefined,
           status: movie.status,
           semana_inicio: formatDate(movie.semana_inicio),
           semana_fim: formatDate(movie.semana_fim),
