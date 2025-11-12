@@ -15,6 +15,7 @@ import * as dotenv from "dotenv";
 dotenv.config();
 import { syncVelox } from "./utils/velox-api";
 import { syncVendaBem } from "./utils/venda-bem-api";
+import { syncIngressoComAll } from "./utils/ingresso.com";
 
 const app = express();
 app.use(express.json());
@@ -386,6 +387,20 @@ app.get("/sync/multicine", async (req, res) => {
     res
       .status(500)
       .json({ error: "Erro durante sincronização Multicine/VendaBem" });
+  }
+});
+
+// Rota: /sync/ingresso-com -> Executa syncIngressoComAll e retorna resumo
+app.get("/sync/ingresso-com", async (req, res) => {
+  try {
+    await syncIngressoComAll();
+
+    res.json({
+      message: "Sincronização Ingresso.com concluída",
+    });
+  } catch (error) {
+    console.error("Erro ao executar syncIngressoComAll:", error);
+    res.status(500).json({ error: "Erro durante sincronização Ingresso.com" });
   }
 });
 
