@@ -236,7 +236,7 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
     // Se a intenção envolve filme, buscar todos os matches
     let movies: Array<{ id: number; name: string }> = [];
     if (movieFromQuery) {
-      const foundMovies = await findMovieIdByName(movieFromQuery);
+      const foundMovies = await findMovieIdByName(movieFromQuery, cinemaId);
       console.log("Matched Movies:", foundMovies);
       if (!foundMovies || foundMovies.length === 0) {
         return res.json([

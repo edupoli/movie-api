@@ -3,7 +3,6 @@ import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 import fetch from "node-fetch";
-import { findMovieIdByName } from "../fuzzyMatch";
 
 dayjs.extend(isoWeek);
 dayjs.extend(customParseFormat);
@@ -55,7 +54,7 @@ function mapSessionsByWeekDays(sessoes: any[]) {
         partes.push(`${data} ${horarios.join(", ")}`);
       }
     }
-    resultado[dia] = partes.length > 0 ? partes.join(", ") : null;
+    resultado[dia] = partes.length > 0 ? partes.join(", ") : "(Sem Sessao)";
   }
   return resultado;
 }
@@ -65,7 +64,7 @@ const pool = new Pool({
   database: process.env.DB_NAME || "cinemas",
   user: process.env.DB_USER || "mooviai",
   password: process.env.DB_PASSWORD || "ServerMoovia123",
-  port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : 30100,
+  port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : 30500,
 });
 
 async function fetchGraphQL(query: string, variables?: any): Promise<any> {
@@ -96,6 +95,19 @@ function parseDurationToMinutes(duration: string): number | null {
   return hours * 60 + minutes;
 }
 
+function formatClassificacao(typicalAgeRange: string | number): string {
+  if (!typicalAgeRange) return "LIVRE";
+
+  const idade = parseInt(String(typicalAgeRange));
+
+  // Se for 0, -1 ou NaN, considera como livre
+  if (idade <= 0 || isNaN(idade)) {
+    return "LIVRE";
+  }
+
+  return `${idade} ANOS`;
+}
+
 async function fetchAllMovies() {
   const scheduledQuery = `{
     homeScheduledMovies(cityIdentifier: "GUAXUPE"){
@@ -104,21 +116,9 @@ async function fetchAllMovies() {
       }
     }
   }`;
-  const comingSoonQuery = `{
-    homeComingSoonMovies(cityIdentifier: "GUAXUPE"){
-      items {
-        genre, movieIdentifier, name, releaseDate, trailerURL, type, url
-      }
-    }
-  }`;
-  const [scheduledResp, comingSoonResp] = await Promise.all([
-    fetchGraphQL(scheduledQuery),
-    fetchGraphQL(comingSoonQuery),
-  ]);
-  return [
-    ...(scheduledResp.data.homeScheduledMovies?.[0]?.items || []),
-    ...(comingSoonResp.data.homeComingSoonMovies?.[0]?.items || []),
-  ];
+
+  const scheduledResp = await fetchGraphQL(scheduledQuery);
+  return scheduledResp.data.homeScheduledMovies?.[0]?.items || [];
 }
 
 async function fetchMovieDetails(movieIdentifier: string) {
@@ -132,121 +132,164 @@ async function fetchMovieDetails(movieIdentifier: string) {
   return detailsResp.data.movies?.[0];
 }
 
-async function insertOrUpdateMovie(movie: any, details: any) {
+async function insertOrUpdateMovie(
+  movie: any,
+  details: any,
+  idCinema: number = 10
+) {
+  const movieIdentifier = parseInt(movie.movieIdentifier);
+
+  // Primeiro verifica se o filme já existe pelo movieIdentifier e id_cinema
+  const checkQuery = `
+    SELECT id, data_estreia 
+    FROM filmes 
+    WHERE movieIdentifier = $1 AND id_cinema = $2
+  `;
+
+  const { rows: existingRows } = await pool.query(checkQuery, [
+    movieIdentifier,
+    idCinema,
+  ]);
+
   const values = [
     details.name,
     details.abstract || "",
     parseDurationToMinutes(details.duration),
-    details.typicalAgeRange,
+    formatClassificacao(details.typicalAgeRange),
     details.genre,
     details.director?.map((d: any) => d.name).join(", ") || null,
     dayjs(movie.releaseDate).format("YYYY-MM-DD"),
     movie.url || details.image?.[0]?.contentUrl,
     movie.trailerURL || details.trailer?.[0]?.contentUrl || null,
+    movieIdentifier,
+    idCinema,
   ];
 
-  const insertFilmeQuery = `
-    INSERT INTO filmes
-      (nome, sinopse, duracao, classificacao, genero, diretor, data_estreia, url_poster, url_trailer)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-    RETURNING id, data_estreia;
-  `;
+  if (existingRows.length > 0) {
+    // Atualiza filme existente
+    const updateQuery = `
+      UPDATE filmes SET
+        nome = $1,
+        sinopse = $2,
+        duracao = $3,
+        classificacao = $4,
+        genero = $5,
+        diretor = $6,
+        data_estreia = $7,
+        url_poster = $8,
+        url_trailer = $9
+      WHERE movieIdentifier = $10 AND id_cinema = $11
+      RETURNING id, data_estreia;
+    `;
 
-  try {
-    return await pool.query(insertFilmeQuery, values);
-  } catch (insertError: any) {
-    // Se der erro de duplicata (unique violation), busca e atualiza
-    if (insertError.code === "23505") {
-      const selectQuery = `SELECT id, data_estreia FROM filmes WHERE nome = $1`;
-      const { rows } = await pool.query(selectQuery, [details.name]);
-      if (rows.length > 0) {
-        // Atualiza os dados do filme existente
-        const updateQuery = `
-          UPDATE filmes SET
-            sinopse = $2,
-            duracao = $3,
-            classificacao = $4,
-            genero = $5,
-            diretor = $6,
-            data_estreia = $7,
-            url_poster = $8,
-            url_trailer = $9
-          WHERE nome = $1
-          RETURNING id, data_estreia;
-        `;
-        return await pool.query(updateQuery, values);
-      } else {
-        throw insertError;
-      }
-    } else {
-      throw insertError;
-    }
+    return await pool.query(updateQuery, values);
+  } else {
+    // Insere novo filme
+    const insertQuery = `
+      INSERT INTO filmes
+        (nome, sinopse, duracao, classificacao, genero, diretor, data_estreia, 
+         url_poster, url_trailer, movieIdentifier, id_cinema)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      RETURNING id, data_estreia;
+    `;
+
+    return await pool.query(insertQuery, values);
   }
 }
 
-function detailsImageOrNull(det: any) {
-  return det.image?.[0]?.contentUrl || null;
+async function processMovie(movie: any, details: any, idCinema: number = 10) {
+  try {
+    console.log(
+      `Processando filme: ${details.name} (ID: ${movie.movieIdentifier})`
+    );
+
+    const { rows } = await insertOrUpdateMovie(movie, details, idCinema);
+
+    return {
+      id: rows[0].id,
+      data_estreia: rows[0].data_estreia,
+      movieIdentifier: movie.movieIdentifier,
+    };
+  } catch (error) {
+    console.error(`Erro ao processar filme ${details.name}:`, error);
+    throw error;
+  }
 }
 
-function detailsTrailerOrNull(det: any) {
-  return det.trailer?.[0]?.contentUrl || null;
+// ================== PROGRAMMING PROCESSING ==================
+async function processProgramacao(
+  movieIdentifier: string,
+  sessoes: any[],
+  filmeInfo: any,
+  idCinema: number
+) {
+  const { id: idFilme, data_estreia } = filmeInfo;
+  const qualquerData = sessoes[0].data;
+  const { semanaInicio, semanaFim } = getCineSemana(
+    dayjs(qualquerData, "DD/MM/YYYY").format("YYYY-MM-DD")
+  );
+  const sessoesSemana = mapSessionsByWeekDays(sessoes);
+
+  const progValues = [
+    idFilme,
+    idCinema,
+    "em cartaz",
+    data_estreia,
+    semanaInicio,
+    semanaFim,
+    sessoesSemana.segunda,
+    sessoesSemana.terca,
+    sessoesSemana.quarta,
+    sessoesSemana.quinta,
+    sessoesSemana.sexta,
+    sessoesSemana.sabado,
+    sessoesSemana.domingo,
+  ];
+
+  // Verifica se já existe programação para este filme e cinema
+  const checkProgQuery = `
+    SELECT id FROM programacao 
+    WHERE id_filme = $1 AND id_cinema = $2
+  `;
+  const { rows: progRows } = await pool.query(checkProgQuery, [
+    idFilme,
+    idCinema,
+  ]);
+
+  if (progRows.length > 0) {
+    // Atualiza programação existente
+    const updateProgQuery = `
+      UPDATE programacao SET
+        status = $3, data_estreia = $4, semana_inicio = $5, semana_fim = $6,
+        segunda = $7, terca = $8, quarta = $9, quinta = $10,
+        sexta = $11, sabado = $12, domingo = $13
+      WHERE id_filme = $1 AND id_cinema = $2
+    `;
+    await pool.query(updateProgQuery, progValues);
+    console.log(
+      `Programação atualizada para filme ${movieIdentifier} (id_filme=${idFilme})`
+    );
+  } else {
+    // Insere nova programação
+    const insertProgQuery = `
+      INSERT INTO programacao
+        (id_filme, id_cinema, status, data_estreia, semana_inicio, semana_fim,
+         segunda, terca, quarta, quinta, sexta, sabado, domingo)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+    `;
+    await pool.query(insertProgQuery, progValues);
+    console.log(
+      `Programação inserida para filme ${movieIdentifier} (id_filme=${idFilme})`
+    );
+  }
 }
 
 async function syncVelox() {
-  // 1. Buscar e atualizar filmes em cartaz e em breve
-  const filmes = await fetchAllMovies();
-
-  for (const filme of filmes) {
-    const det = await fetchMovieDetails(filme.movieIdentifier);
-    if (!det) continue;
-
-    // Evita consumir valores da sequence quando o filme já existe.
-    // Primeiro tenta encontrar via fuzzy match; se encontrado, faz UPDATE;
-    // se não, faz INSERT.
-    try {
-      const encontrados = await findMovieIdByName(det.name);
-      const valuesCommon = [
-        det.abstract || "",
-        parseDurationToMinutes(det.duration),
-        det.typicalAgeRange,
-        det.genre,
-        det.director?.map((d: any) => d.name).join(", ") || null,
-        dayjs(filme.releaseDate).format("YYYY-MM-DD"),
-        filme.url || detailsImageOrNull(det),
-        filme.trailerURL || detailsTrailerOrNull(det),
-      ];
-
-      if (encontrados && encontrados.length > 0) {
-        // Atualiza registro existente (não consome sequence)
-        const updateQuery = `
-          UPDATE filmes SET
-            sinopse = $1,
-            duracao = $2,
-            classificacao = $3,
-            genero = $4,
-            diretor = $5,
-            data_estreia = $6,
-            url_poster = $7,
-            url_trailer = $8
-          WHERE id = $9
-          RETURNING id, data_estreia;
-        `;
-        const updateValues = [...valuesCommon, encontrados[0].id];
-        await pool.query(updateQuery, updateValues);
-      } else {
-        // Não existe: insere normalmente
-        await insertOrUpdateMovie(filme, det);
-      }
-    } catch (err) {
-      console.error("Erro ao atualizar/inserir filme (evitar sequência):", err);
-      // fallback: tenta inserir para não perder o filme
-      await insertOrUpdateMovie(filme, det);
-    }
-  }
-
   console.log("Iniciando sincronização Velox...");
 
-  // 2. Buscar eventos (sessões) e processar filmes
+  const idCinema = 10; // ID fixo do cinema
+
+  // 1. Buscar filmes e eventos em paralelo
   const eventsQuery = `{
     events(placeIdentifier: "GXP") {
       startDate
@@ -255,149 +298,108 @@ async function syncVelox() {
     }
   }`;
 
-  const eventsResp = await fetchGraphQL(eventsQuery);
-  const eventos = eventsResp.data.events;
+  const [filmes, eventsResp] = await Promise.all([
+    fetchAllMovies(),
+    fetchGraphQL(eventsQuery),
+  ]);
+
+  console.log(`Encontrados ${filmes.length} filmes para processar`);
+
+  // 2. Buscar detalhes de todos os filmes em paralelo
+  const movieDetailsPromises = filmes.map((filme) =>
+    fetchMovieDetails(filme.movieIdentifier)
+      .then((details) => ({ filme, details }))
+      .catch((error) => {
+        console.error(`Erro ao buscar detalhes do filme ${filme.name}:`, error);
+        return null;
+      })
+  );
+
+  const movieDetailsResults = await Promise.all(movieDetailsPromises);
+
+  // Filtrar resultados válidos
+  const validMovies = movieDetailsResults.filter(
+    (result) => result && result.details
+  );
+
+  // 3. Processar todos os filmes em paralelo
+  const movieProcessPromises = validMovies.map(({ filme, details }) =>
+    processMovie(filme, details, idCinema)
+      .then((result) => ({
+        movieIdentifier: filme.movieIdentifier,
+        ...result,
+      }))
+      .catch((error) => {
+        console.error(`Erro ao processar filme ${details.name}:`, error);
+        return null;
+      })
+  );
+
+  const processedMovies = await Promise.all(movieProcessPromises);
+
+  // 4. Criar mapa de filmes
   const filmeIdMap = new Map<string, { id: number; data_estreia: string }>();
-  const filmesProcessados = new Set<string>();
 
-  async function processMovie(nomeFilme: string, movieIdentifier: string) {
-    try {
-      const filmesEncontrados = await findMovieIdByName(nomeFilme);
-
-      if (filmesEncontrados?.length > 0) {
-        console.log(`Filme encontrado no banco: ${nomeFilme}`);
-        filmeIdMap.set(movieIdentifier, {
-          id: filmesEncontrados[0].id,
-          data_estreia: filmesEncontrados[0].data_estreia
-            .toISOString()
-            .split("T")[0],
-        });
-        return;
-      }
-
-      console.log(`Buscando detalhes do filme: ${nomeFilme}`);
-      const det = await fetchMovieDetails(movieIdentifier);
-
-      if (!det) {
-        console.log(`Não foi possível obter detalhes do filme: ${nomeFilme}`);
-        return;
-      }
-
-      const { rows } = await insertOrUpdateMovie(
-        { releaseDate: det.releaseDate },
-        det
-      );
-      filmeIdMap.set(movieIdentifier, {
-        id: rows[0].id,
-        data_estreia: rows[0].data_estreia,
+  processedMovies.forEach((result) => {
+    if (result) {
+      filmeIdMap.set(result.movieIdentifier, {
+        id: result.id,
+        data_estreia: result.data_estreia.toISOString().split("T")[0],
       });
-      console.log(`Filme cadastrado: ${nomeFilme}`);
-    } catch (error) {
-      console.error(`Erro ao processar filme ${nomeFilme}:`, error);
+      console.log(`Filme processado: ID BD ${result.id}`);
     }
-  }
+  });
 
-  for (const evento of eventos) {
-    const { name: nomeFilme, parentIdentifier } = evento.workPresented;
-    const movieIdentifier = String(parentIdentifier);
+  // 5. Processar eventos (sessões)
+  const eventos = eventsResp.data.events;
 
-    if (filmesProcessados.has(movieIdentifier)) continue;
-
-    filmesProcessados.add(movieIdentifier);
-    await processMovie(nomeFilme, movieIdentifier);
-  }
-
-  // 3. Agrupar sessões por filme
+  // 6. Agrupar sessões por filme
   const sessoesPorFilme: Record<string, any[]> = {};
+
   for (const ev of eventos) {
-    const movieId = String(ev.workPresented.parentIdentifier);
-    if (!filmeIdMap.has(movieId)) {
+    const movieIdentifier = String(ev.workPresented.parentIdentifier);
+
+    if (!filmeIdMap.has(movieIdentifier)) {
+      console.log(`Filme não encontrado no mapa: ${movieIdentifier}`);
       continue;
     }
+
     const d = dayjs(ev.startDate);
-    if (!sessoesPorFilme[movieId]) sessoesPorFilme[movieId] = [];
-    sessoesPorFilme[movieId].push({
+    if (!sessoesPorFilme[movieIdentifier]) {
+      sessoesPorFilme[movieIdentifier] = [];
+    }
+
+    sessoesPorFilme[movieIdentifier].push({
       data: d.format("DD/MM/YYYY"),
       hora: d.format("HH:mm"),
       tipo: `(${ev.generalFeatures})`,
     });
   }
 
-  console.log("Filmes com sessões:", Object.keys(sessoesPorFilme));
+  console.log(`Filmes com sessões: ${Object.keys(sessoesPorFilme).length}`);
 
-  // 4. Persistir programação para cada filme
-  for (const [movieIdentifier, sessoes] of Object.entries(sessoesPorFilme)) {
-    if (!sessoes.length) continue;
-
-    const filmeInfo = filmeIdMap.get(movieIdentifier);
-    if (!filmeInfo) {
-      console.log(`Filme não encontrado no filmeIdMap: ${movieIdentifier}`);
-      continue;
-    }
-
-    const { id: idFilme, data_estreia } = filmeInfo;
-    const qualquerData = sessoes[0].data;
-    const { semanaInicio, semanaFim } = getCineSemana(
-      dayjs(qualquerData, "DD/MM/YYYY").format("YYYY-MM-DD")
-    );
-    const sessoesSemana = mapSessionsByWeekDays(sessoes);
-
-    const insertProgQuery = `
-      INSERT INTO programacao
-        (id_filme, id_cinema, status, data_estreia, semana_inicio, semana_fim,
-         segunda, terca, quarta, quinta, sexta, sabado, domingo)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-    `;
-
-    const progValues = [
-      idFilme,
-      6, // id_cinema fixo
-      "em cartaz",
-      data_estreia,
-      semanaInicio,
-      semanaFim,
-      sessoesSemana.segunda,
-      sessoesSemana.terca,
-      sessoesSemana.quarta,
-      sessoesSemana.quinta,
-      sessoesSemana.sexta,
-      sessoesSemana.sabado,
-      sessoesSemana.domingo,
-    ];
-
-    console.log(
-      `Persistindo programação para filme ${movieIdentifier} (id_filme=${idFilme})`
-    );
-
-    try {
-      await pool.query(insertProgQuery, progValues);
-    } catch (progError: any) {
-      // Se der erro de duplicata (unique violation), atualiza
-      if (progError.code === "23505") {
-        const updateProgQuery = `
-          UPDATE programacao SET
-            status = $3,
-            data_estreia = $4,
-            semana_inicio = $5,
-            semana_fim = $6,
-            segunda = $7,
-            terca = $8,
-            quarta = $9,
-            quinta = $10,
-            sexta = $11,
-            sabado = $12,
-            domingo = $13
-          WHERE id_filme = $1 AND id_cinema = $2
-        `;
-        await pool.query(updateProgQuery, progValues);
-      } else {
-        throw progError;
+  // 7. Processar programação em paralelo
+  const progPromises = Object.entries(sessoesPorFilme)
+    .filter(([_, sessoes]) => sessoes.length > 0)
+    .map(([movieIdentifier, sessoes]) => {
+      const filmeInfo = filmeIdMap.get(movieIdentifier);
+      if (filmeInfo) {
+        return processProgramacao(
+          movieIdentifier,
+          sessoes,
+          filmeInfo,
+          idCinema
+        );
       }
-    }
-  }
+      return Promise.resolve();
+    });
+
+  await Promise.all(progPromises);
+
   console.log("Sincronização Velox concluída!");
 }
 
+// Descomente para testar
 //syncVelox();
 
 // Export para uso via endpoint

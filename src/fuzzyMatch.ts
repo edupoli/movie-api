@@ -11,9 +11,13 @@ function normalizeString(str: string): string {
 }
 
 export async function findMovieIdByName(
-  name: string
+  name: string,
+  idCinema: number
 ): Promise<Array<{ id: number; name: string; data_estreia: Date }> | null> {
-  const movies = await query("SELECT id, nome, data_estreia FROM filmes", []);
+  const movies = await query(
+    "SELECT id, nome, data_estreia FROM filmes WHERE id_cinema = $1",
+    [idCinema]
+  );
   if (!movies.length) return null;
 
   const normalizedInput = normalizeString(name);

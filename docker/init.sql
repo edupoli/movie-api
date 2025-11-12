@@ -1,23 +1,6 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 
--- Create filmes table
-CREATE TABLE IF NOT EXISTS filmes (
-  id BIGSERIAL PRIMARY KEY,
-  nome VARCHAR(255) NOT NULL UNIQUE,
-  sinopse TEXT,
-  duracao NUMERIC(5,1),
-  classificacao VARCHAR(50),
-  genero VARCHAR(255),
-  diretor VARCHAR(255),
-  elenco_principal TEXT,
-  data_estreia DATE,
-  url_poster VARCHAR(255),
-  url_trailer VARCHAR(255),
-  movieIdentifier INTEGER,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Create cinemas table
 CREATE TABLE IF NOT EXISTS cinemas (
   id BIGSERIAL PRIMARY KEY,
@@ -28,6 +11,28 @@ CREATE TABLE IF NOT EXISTS cinemas (
   url_comprar_ingresso VARCHAR(255),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+
+-- Create filmes table
+CREATE TABLE IF NOT EXISTS filmes (
+  id BIGSERIAL PRIMARY KEY,
+  id_cinema BIGINT REFERENCES cinemas(id),
+  nome VARCHAR(255) NOT NULL,
+  sinopse TEXT,
+  duracao NUMERIC(5,1),
+  classificacao VARCHAR(50),
+  genero VARCHAR(255),
+  diretor VARCHAR(255),
+  elenco_principal TEXT,
+  data_estreia DATE,
+  url_poster VARCHAR(255),
+  url_trailer VARCHAR(255),
+  movieIdentifier INTEGER,
+  codigo_filme INTEGER,
+  id_filme_ingresso_com INTEGER,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 
 -- Create programacao table with foreign keys
 CREATE TABLE IF NOT EXISTS programacao (
@@ -92,9 +97,20 @@ CREATE TABLE IF NOT EXISTS users (
 -- Índices para a tabela programacao
 CREATE INDEX IF NOT EXISTS idx_programacao_id_filme ON programacao (id_filme);
 CREATE INDEX IF NOT EXISTS idx_programacao_id_cinema ON programacao (id_cinema);
+CREATE INDEX IF NOT EXISTS idx_programacao_semana ON programacao (semana_inicio, semana_fim);
 
 -- Índices para a tabela ingressos
 CREATE INDEX IF NOT EXISTS idx_ingressos_id_cinema ON ingressos (id_cinema);
+
+-- Índices otimizados para a tabela filmes
+CREATE INDEX IF NOT EXISTS idx_filmes_id_cinema ON filmes (id_cinema);
+CREATE INDEX IF NOT EXISTS idx_filmes_ingresso_com ON filmes (id_filme_ingresso_com);
+CREATE INDEX IF NOT EXISTS idx_filmes_codigo_filme ON filmes (codigo_filme);
+CREATE INDEX IF NOT EXISTS idx_filmes_cinema_ingresso ON filmes (id_cinema, id_filme_ingresso_com);
+
+-- Índices compostos para melhor performance nas consultas frequentes
+CREATE INDEX IF NOT EXISTS idx_programacao_filme_cinema ON programacao (id_filme, id_cinema);
+CREATE INDEX IF NOT EXISTS idx_filmes_cinema_codigo ON filmes (id_cinema, codigo_filme);
 
 -- Insert admin user if not exists
 INSERT INTO users (nome, username, password)
@@ -106,3 +122,4 @@ WHERE NOT EXISTS (
 ALTER TABLE programacao
 ADD CONSTRAINT programacao_unica UNIQUE (id_filme, id_cinema);
 
+ALTER TABLE filmes ADD CONSTRAINT filmes_cinema_codigo_unique UNIQUE (id_cinema, codigo_filme);
