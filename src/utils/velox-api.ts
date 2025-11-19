@@ -116,9 +116,21 @@ async function fetchAllMovies() {
       }
     }
   }`;
-
-  const scheduledResp = await fetchGraphQL(scheduledQuery);
-  return scheduledResp.data.homeScheduledMovies?.[0]?.items || [];
+  const comingSoonQuery = `{
+    homeComingSoonMovies(cityIdentifier: "GUAXUPE"){
+      items {
+        genre, movieIdentifier, name, releaseDate, trailerURL, type, url
+      }
+    }
+  }`;
+  const [scheduledResp, comingSoonResp] = await Promise.all([
+    fetchGraphQL(scheduledQuery),
+    fetchGraphQL(comingSoonQuery),
+  ]);
+  return [
+    ...(scheduledResp.data.homeScheduledMovies?.[0]?.items || []),
+    ...(comingSoonResp.data.homeComingSoonMovies?.[0]?.items || []),
+  ];
 }
 
 async function fetchMovieDetails(movieIdentifier: string) {

@@ -89,10 +89,16 @@ async function fetchFromAPI(url: string): Promise<any> {
 
 async function fetchAllMovies(cityId: string) {
   const nowPlayingUrl = `https://api-content.ingresso.com/v0/templates/nowplaying/${cityId}?partnership=home`;
+  const comingSoonUrl = `https://api-content.ingresso.com/v0/templates/soon/${cityId}?partnership=home`;
 
-  const nowPlayingResp = await fetchFromAPI(nowPlayingUrl);
+  // Fazer as duas requisições em paralelo
+  const [nowPlayingResp, comingSoonResp] = await Promise.all([
+    fetchFromAPI(nowPlayingUrl),
+    fetchFromAPI(comingSoonUrl),
+  ]);
 
-  return nowPlayingResp || [];
+  // Combinar os resultados das duas requisições
+  return [...(nowPlayingResp || []), ...(comingSoonResp || [])];
 }
 
 async function fetchSessions(cityId: string, theaterId: string) {
