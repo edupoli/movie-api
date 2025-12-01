@@ -1,5 +1,8 @@
 services:
-  postgres:
+  # ==========================================
+  # PostgreSQL - PRODUÇÃO (Porta 30100)
+  # ==========================================
+  postgres-producao:
     image: pgvector/pgvector:pg17
     container_name: postgres-producao
     restart: unless-stopped
@@ -21,6 +24,41 @@ services:
       -c ssl=on
       -c ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
       -c ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+    networks:
+      - postgres-network
+
+  # ==========================================
+  # PostgreSQL - HOMOLOGAÇÃO (Porta 30500)
+  # ==========================================
+  postgres-homolog:
+    image: pgvector/pgvector:pg17
+    container_name: postgres-homolog
+    restart: unless-stopped
+    ports:
+      - "30500:5432"
+    environment:
+      - POSTGRES_USER=mooviai
+      - POSTGRES_PASSWORD=ServerMoovia123
+      - POSTGRES_DB=cinemas
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 --auth-local=scram-sha-256
+    volumes:
+      - pgdata-homolog:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/00-init.sql
+      - ./insert-cinemas.sql:/docker-entrypoint-initdb.d/01-insert-cinemas.sql
+      - ./insert-ingressos.sql:/docker-entrypoint-initdb.d/02-insert-ingressos.sql
+    command: >
+      postgres
+      -c timezone='America/Sao_Paulo'
+      -c ssl=on
+      -c ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
+      -c ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+    networks:
+      - postgres-network
 
 volumes:
   pgdata-producao:
+  pgdata-homolog:
+
+networks:
+  postgres-network:
+    driver: bridge
