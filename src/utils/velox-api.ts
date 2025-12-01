@@ -204,7 +204,8 @@ async function insertOrUpdateMovie(
         diretor = $6,
         data_estreia = $7,
         url_poster = $8,
-        url_trailer = $9
+        url_trailer = $9,
+        updated_at = CURRENT_TIMESTAMP
       WHERE movieIdentifier = $10 AND id_cinema = $11
       RETURNING id, data_estreia;
     `;
@@ -294,7 +295,7 @@ async function processProgramacao(
         UPDATE programacao SET
           status = $3, data_estreia = $4, semana_inicio = $5, semana_fim = $6,
           segunda = $7, terca = $8, quarta = $9, quinta = $10,
-          sexta = $11, sabado = $12, domingo = $13
+          sexta = $11, sabado = $12, domingo = $13, updated_at = CURRENT_TIMESTAMP
         WHERE id_filme = $1 AND id_cinema = $2 AND semana_inicio = $5
       `;
       await pool.query(updateProgQuery, progValues);

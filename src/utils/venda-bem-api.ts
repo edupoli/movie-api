@@ -140,7 +140,8 @@ async function processMovieData(filme: any, idCinema: number) {
       const updateFilmeQuery = `
         UPDATE filmes SET
           nome = $3, sinopse = $4, duracao = $5, classificacao = $6,
-          genero = $7, url_poster = $8, url_trailer = $9, data_estreia = $10
+          genero = $7, url_poster = $8, url_trailer = $9, data_estreia = $10,
+          updated_at = CURRENT_TIMESTAMP
         WHERE id_cinema = $1 AND codigo_filme = $2
       `;
 
@@ -235,7 +236,7 @@ async function processProgramacao(filmeData: any, idCinema: number) {
         UPDATE programacao SET
           status = $4, data_estreia = $5, semana_fim = $6, segunda = $7,
           terca = $8, quarta = $9, quinta = $10, sexta = $11,
-          sabado = $12, domingo = $13
+          sabado = $12, domingo = $13, updated_at = CURRENT_TIMESTAMP
         WHERE id_filme = $1 AND id_cinema = $2 AND semana_inicio = $3
       `;
 
