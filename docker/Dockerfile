@@ -15,5 +15,7 @@ RUN apt-get update && apt-get install -y postgresql-17-cron \
 
 # Copiar scripts SQL para inicialização
 COPY ./init.sql /docker-entrypoint-initdb.d/00-init.sql
+COPY ./insert-cinemas.sql /docker-entrypoint-initdb.d/01-insert-cinemas.sql
+COPY ./insert-ingressos.sql /docker-entrypoint-initdb.d/02-insert-ingressos.sql
 
 USER postgres

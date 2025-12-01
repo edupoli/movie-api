@@ -1,25 +1,6 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 
--- ============================================================
--- FUNCTION: update_updated_at_column (com IF NOT EXISTS manual)
--- ============================================================
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_proc WHERE proname = 'update_updated_at_column'
-    ) THEN
-        CREATE FUNCTION update_updated_at_column()
-        RETURNS TRIGGER AS $func$
-        BEGIN
-            NEW.updated_at = CURRENT_TIMESTAMP;
-            RETURN NEW;
-        END;
-        $func$ LANGUAGE plpgsql;
-    END IF;
-END$$;
-
-
 -- ======================================
 -- TABELAS
 -- ======================================
@@ -32,7 +13,7 @@ CREATE TABLE IF NOT EXISTS cinemas (
   url_conferir_horarios VARCHAR(255),
   url_comprar_ingresso VARCHAR(255),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS filmes (
@@ -52,7 +33,7 @@ CREATE TABLE IF NOT EXISTS filmes (
   codigo_filme INTEGER,
   id_filme_ingresso_com INTEGER,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP 
 );
 
 CREATE TABLE IF NOT EXISTS programacao (
@@ -71,7 +52,7 @@ CREATE TABLE IF NOT EXISTS programacao (
   sabado TEXT,
   domingo TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS ingressos (
@@ -86,7 +67,7 @@ CREATE TABLE IF NOT EXISTS ingressos (
   meia_3d DECIMAL(10,2),
   inteira_3d_desconto DECIMAL(10,2),
   inteira_vip_2d DECIMAL(10,2),
-  meia_vip__2d DECIMAL(10,2),
+  meia_vip_2d DECIMAL(10,2),
   inteira_vip_2d_desconto DECIMAL(10,2),
   inteira_vip_3d DECIMAL(10,2),
   meia_vip_3d DECIMAL(10,2),
@@ -100,7 +81,7 @@ CREATE TABLE IF NOT EXISTS ingressos (
   domingo TEXT,
   feriados TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -109,7 +90,7 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT NOT NULL UNIQUE,
   password VARCHAR(255) NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP
 );
 
 -- ======================================
@@ -153,68 +134,3 @@ END$$;
 INSERT INTO users (nome, username, password)
 SELECT 'Administrador', 'admin', '$2b$10$C253sJ9McqP7lnwOYJrkYutHUXPI9BJ3A6y.6IBbqus4GQXEgf37O'
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin');
-
-
--- ============================================================
--- TRIGGERS (IF NOT EXISTS MANUAL)
--- ============================================================
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_trigger WHERE tgname = 'update_cinemas_updated_at'
-    ) THEN
-        CREATE TRIGGER update_cinemas_updated_at
-            BEFORE UPDATE ON cinemas
-            FOR EACH ROW
-            EXECUTE FUNCTION update_updated_at_column();
-    END IF;
-END$$;
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_trigger WHERE tgname = 'update_filmes_updated_at'
-    ) THEN
-        CREATE TRIGGER update_filmes_updated_at
-            BEFORE UPDATE ON filmes
-            FOR EACH ROW
-            EXECUTE FUNCTION update_updated_at_column();
-    END IF;
-END$$;
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_trigger WHERE tgname = 'update_programacao_updated_at'
-    ) THEN
-        CREATE TRIGGER update_programacao_updated_at
-            BEFORE UPDATE ON programacao
-            FOR EACH ROW
-            EXECUTE FUNCTION update_updated_at_column();
-    END IF;
-END$$;
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_trigger WHERE tgname = 'update_ingressos_updated_at'
-    ) THEN
-        CREATE TRIGGER update_ingressos_updated_at
-            BEFORE UPDATE ON ingressos
-            FOR EACH ROW
-            EXECUTE FUNCTION update_updated_at_column();
-    END IF;
-END$$;
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_trigger WHERE tgname = 'update_users_updated_at'
-    ) THEN
-        CREATE TRIGGER update_users_updated_at
-            BEFORE UPDATE ON users
-            FOR EACH ROW
-            EXECUTE FUNCTION update_updated_at_column();
-    END IF;
-END$$;
