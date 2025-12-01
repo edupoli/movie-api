@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: postgres-mooviai-homolog
+    container_name: postgres-homolog
     restart: unless-stopped
     ports:
       - "30500:5432"
