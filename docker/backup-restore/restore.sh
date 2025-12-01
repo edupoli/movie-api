@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # CONFIGURAÇÕES ------------------------
-CONTAINER_NAME="postgres-mooviai"
-DB_USER="postgres"
+CONTAINER_NAME="postgres-producao"
+DB_USER="mooviai"
 DB_PASSWORD="ServerMoovia123"         # <<< SUA SENHA DO POSTGRES
 BACKUP_FILE="$1"
 # --------------------------------------
