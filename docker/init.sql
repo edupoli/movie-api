@@ -1,15 +1,29 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
+-- ============================================================
+-- FUNCTION: update_updated_at_column (com IF NOT EXISTS manual)
+-- ============================================================
+DO $$
 BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_proc WHERE proname = 'update_updated_at_column'
+    ) THEN
+        CREATE FUNCTION update_updated_at_column()
+        RETURNS TRIGGER AS $func$
+        BEGIN
+            NEW.updated_at = CURRENT_TIMESTAMP;
+            RETURN NEW;
+        END;
+        $func$ LANGUAGE plpgsql;
+    END IF;
+END$$;
 
--- Create cinemas table
+
+-- ======================================
+-- TABELAS
+-- ======================================
+
 CREATE TABLE IF NOT EXISTS cinemas (
   id BIGSERIAL PRIMARY KEY,
   nome VARCHAR(255) NOT NULL,
@@ -21,8 +35,6 @@ CREATE TABLE IF NOT EXISTS cinemas (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-
--- Create filmes table
 CREATE TABLE IF NOT EXISTS filmes (
   id BIGSERIAL PRIMARY KEY,
   id_cinema BIGINT REFERENCES cinemas(id),
@@ -43,8 +55,6 @@ CREATE TABLE IF NOT EXISTS filmes (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-
--- Create programacao table with foreign keys
 CREATE TABLE IF NOT EXISTS programacao (
   id BIGSERIAL PRIMARY KEY,
   id_filme BIGINT REFERENCES filmes(id),
@@ -64,7 +74,6 @@ CREATE TABLE IF NOT EXISTS programacao (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create ingressos table with foreign keys
 CREATE TABLE IF NOT EXISTS ingressos (
   id BIGSERIAL PRIMARY KEY,
   id_cinema BIGINT NOT NULL REFERENCES cinemas(id),
@@ -77,7 +86,7 @@ CREATE TABLE IF NOT EXISTS ingressos (
   meia_3d DECIMAL(10,2),
   inteira_3d_desconto DECIMAL(10,2),
   inteira_vip_2d DECIMAL(10,2),
-  meia_vip_2d DECIMAL(10,2),
+  meia_vip__2d DECIMAL(10,2),
   inteira_vip_2d_desconto DECIMAL(10,2),
   inteira_vip_3d DECIMAL(10,2),
   meia_vip_3d DECIMAL(10,2),
@@ -91,12 +100,9 @@ CREATE TABLE IF NOT EXISTS ingressos (
   domingo TEXT,
   feriados TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  
-  CONSTRAINT fk_cinema FOREIGN KEY(id_cinema) REFERENCES cinemas(id)
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create users table
 CREATE TABLE IF NOT EXISTS users (
   id BIGSERIAL PRIMARY KEY,
   nome VARCHAR(255) NOT NULL,
@@ -106,58 +112,109 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create indexes
--- Índices para a tabela programacao
+-- ======================================
+-- ÍNDICES
+-- ======================================
+
 CREATE INDEX IF NOT EXISTS idx_programacao_id_filme ON programacao (id_filme);
 CREATE INDEX IF NOT EXISTS idx_programacao_id_cinema ON programacao (id_cinema);
 CREATE INDEX IF NOT EXISTS idx_programacao_semana ON programacao (semana_inicio, semana_fim);
 
--- Índices para a tabela ingressos
 CREATE INDEX IF NOT EXISTS idx_ingressos_id_cinema ON ingressos (id_cinema);
 
--- Índices otimizados para a tabela filmes
 CREATE INDEX IF NOT EXISTS idx_filmes_id_cinema ON filmes (id_cinema);
 CREATE INDEX IF NOT EXISTS idx_filmes_ingresso_com ON filmes (id_filme_ingresso_com);
 CREATE INDEX IF NOT EXISTS idx_filmes_codigo_filme ON filmes (codigo_filme);
 CREATE INDEX IF NOT EXISTS idx_filmes_cinema_ingresso ON filmes (id_cinema, id_filme_ingresso_com);
 
--- Índices compostos para melhor performance nas consultas frequentes
 CREATE INDEX IF NOT EXISTS idx_programacao_filme_cinema ON programacao (id_filme, id_cinema);
 CREATE INDEX IF NOT EXISTS idx_filmes_cinema_codigo ON filmes (id_cinema, codigo_filme);
 
--- Insert admin user if not exists
+
+-- ============================================================
+-- CONSTRAINT: filmes_cinema_codigo_unique (IF NOT EXISTS manual)
+-- ============================================================
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_constraint 
+        WHERE conname = 'filmes_cinema_codigo_unique'
+    ) THEN
+        ALTER TABLE filmes 
+        ADD CONSTRAINT filmes_cinema_codigo_unique UNIQUE (id_cinema, codigo_filme);
+    END IF;
+END$$;
+
+
+-- ======================================
+-- Usuário admin
+-- ======================================
 INSERT INTO users (nome, username, password)
 SELECT 'Administrador', 'admin', '$2b$10$C253sJ9McqP7lnwOYJrkYutHUXPI9BJ3A6y.6IBbqus4GQXEgf37O'
-WHERE NOT EXISTS (
-  SELECT 1 FROM users WHERE username = 'admin'
-);
+WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin');
 
 
+-- ============================================================
+-- TRIGGERS (IF NOT EXISTS MANUAL)
+-- ============================================================
 
-ALTER TABLE filmes ADD CONSTRAINT filmes_cinema_codigo_unique UNIQUE (id_cinema, codigo_filme);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'update_cinemas_updated_at'
+    ) THEN
+        CREATE TRIGGER update_cinemas_updated_at
+            BEFORE UPDATE ON cinemas
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END$$;
 
--- Triggers for updated_at
-CREATE TRIGGER update_cinemas_updated_at
-    BEFORE UPDATE ON cinemas
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'update_filmes_updated_at'
+    ) THEN
+        CREATE TRIGGER update_filmes_updated_at
+            BEFORE UPDATE ON filmes
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END$$;
 
-CREATE TRIGGER update_filmes_updated_at
-    BEFORE UPDATE ON filmes
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'update_programacao_updated_at'
+    ) THEN
+        CREATE TRIGGER update_programacao_updated_at
+            BEFORE UPDATE ON programacao
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END$$;
 
-CREATE TRIGGER update_programacao_updated_at
-    BEFORE UPDATE ON programacao
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'update_ingressos_updated_at'
+    ) THEN
+        CREATE TRIGGER update_ingressos_updated_at
+            BEFORE UPDATE ON ingressos
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END$$;
 
-CREATE TRIGGER update_ingressos_updated_at
-    BEFORE UPDATE ON ingressos
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_users_updated_at
-    BEFORE UPDATE ON users
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'update_users_updated_at'
+    ) THEN
+        CREATE TRIGGER update_users_updated_at
+            BEFORE UPDATE ON users
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END$$;
