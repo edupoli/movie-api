@@ -1,6 +1,14 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
 -- Create cinemas table
 CREATE TABLE IF NOT EXISTS cinemas (
   id BIGSERIAL PRIMARY KEY,
@@ -9,7 +17,8 @@ CREATE TABLE IF NOT EXISTS cinemas (
   telefone VARCHAR(255),
   url_conferir_horarios VARCHAR(255),
   url_comprar_ingresso VARCHAR(255),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 
@@ -30,7 +39,8 @@ CREATE TABLE IF NOT EXISTS filmes (
   movieIdentifier INTEGER,
   codigo_filme INTEGER,
   id_filme_ingresso_com INTEGER,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 
@@ -50,7 +60,8 @@ CREATE TABLE IF NOT EXISTS programacao (
   sexta TEXT,
   sabado TEXT,
   domingo TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create ingressos table with foreign keys
@@ -80,6 +91,7 @@ CREATE TABLE IF NOT EXISTS ingressos (
   domingo TEXT,
   feriados TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   
   CONSTRAINT fk_cinema FOREIGN KEY(id_cinema) REFERENCES cinemas(id)
 );
@@ -90,7 +102,8 @@ CREATE TABLE IF NOT EXISTS users (
   nome VARCHAR(255) NOT NULL,
   username TEXT NOT NULL UNIQUE,
   password VARCHAR(255) NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create indexes
@@ -119,7 +132,32 @@ WHERE NOT EXISTS (
   SELECT 1 FROM users WHERE username = 'admin'
 );
 
-ALTER TABLE programacao
-ADD CONSTRAINT programacao_unica UNIQUE (id_filme, id_cinema);
+
 
 ALTER TABLE filmes ADD CONSTRAINT filmes_cinema_codigo_unique UNIQUE (id_cinema, codigo_filme);
+
+-- Triggers for updated_at
+CREATE TRIGGER update_cinemas_updated_at
+    BEFORE UPDATE ON cinemas
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_filmes_updated_at
+    BEFORE UPDATE ON filmes
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_programacao_updated_at
+    BEFORE UPDATE ON programacao
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_ingressos_updated_at
+    BEFORE UPDATE ON ingressos
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_users_updated_at
+    BEFORE UPDATE ON users
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();

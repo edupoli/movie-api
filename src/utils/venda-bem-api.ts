@@ -31,11 +31,13 @@ function toTitleCase(str: string): string {
     .join(" ");
 }
 
-function mapLegendado(value: string): string {
+function mapLegendado(value: string, is3D: boolean): string {
   const lower = value.toLowerCase();
-  if (lower.includes("nacional")) return "(NAC)";
-  if (lower.includes("dublado")) return "(DUB)";
-  return "(LEG)";
+  let type = "LEG";
+  if (lower.includes("nacional")) type = "NAC";
+  else if (lower.includes("dublado")) type = "DUB";
+
+  return is3D ? `(3D ${type})` : `(${type})`;
 }
 
 function getCineSemana(dateStr: string) {
@@ -46,6 +48,20 @@ function getCineSemana(dateStr: string) {
     semanaInicio: semanaInicio.format("YYYY-MM-DD"),
     semanaFim: semanaFim.format("YYYY-MM-DD"),
   };
+}
+
+function groupSessionsByCineWeek(sessoes: any[]) {
+  const groups: Record<string, any[]> = {};
+
+  sessoes.forEach((sessao) => {
+    const { semanaInicio } = getCineSemana(sessao.data);
+    if (!groups[semanaInicio]) {
+      groups[semanaInicio] = [];
+    }
+    groups[semanaInicio].push(sessao);
+  });
+
+  return groups;
 }
 
 function mapSessionsByWeekDays(sessoes: any[]) {
@@ -62,7 +78,8 @@ function mapSessionsByWeekDays(sessoes: any[]) {
   sessoes.forEach((s) => {
     const data = dayjs(s.data, "DD/MM/YYYY");
     const horaFormatada = formatHora(s.hora);
-    const tipo = mapLegendado(s.legendado);
+    const is3D = s.filme_3d === "S";
+    const tipo = mapLegendado(s.legendado, is3D);
     const diaSemana = [
       "domingo",
       "segunda",
@@ -191,77 +208,87 @@ async function processMovieData(filme: any, idCinema: number) {
 async function processProgramacao(filmeData: any, idCinema: number) {
   const { idFilme, dataEstreia, sessoes } = filmeData;
 
-  // Programação
-  const qualquerData = sessoes[0].data;
-  const { semanaInicio, semanaFim } = getCineSemana(qualquerData);
-  const sessoesSemana = mapSessionsByWeekDays(sessoes);
+  // Agrupa sessões por cine-semana
+  const sessionsByWeek = groupSessionsByCineWeek(sessoes);
 
-  const checkProgQuery = `
-    SELECT id FROM programacao 
-    WHERE id_filme = $1 AND id_cinema = $2 AND semana_inicio = $3
-  `;
+  // Processa cada cine-semana
+  for (const [semanaInicio, weekSessions] of Object.entries(sessionsByWeek)) {
+    const semanaInicioDate = dayjs(semanaInicio, "YYYY-MM-DD");
+    const semanaFim = semanaInicioDate.add(6, "day").format("YYYY-MM-DD");
 
-  const progResult = await pool.query(checkProgQuery, [
-    idFilme,
-    idCinema,
-    semanaInicio,
-  ]);
+    const sessoesSemana = mapSessionsByWeekDays(weekSessions);
 
-  if (progResult.rows.length > 0) {
-    // Programação já existe, atualiza
-    const updateProgQuery = `
-      UPDATE programacao SET
-        status = $4, data_estreia = $5, semana_fim = $6, segunda = $7,
-        terca = $8, quarta = $9, quinta = $10, sexta = $11,
-        sabado = $12, domingo = $13
+    const checkProgQuery = `
+      SELECT id FROM programacao 
       WHERE id_filme = $1 AND id_cinema = $2 AND semana_inicio = $3
     `;
 
-    const updateProgValues = [
+    const progResult = await pool.query(checkProgQuery, [
       idFilme,
       idCinema,
       semanaInicio,
-      "em cartaz",
-      dataEstreia,
-      semanaFim,
-      sessoesSemana.segunda,
-      sessoesSemana.terca,
-      sessoesSemana.quarta,
-      sessoesSemana.quinta,
-      sessoesSemana.sexta,
-      sessoesSemana.sabado,
-      sessoesSemana.domingo,
-    ];
+    ]);
 
-    await pool.query(updateProgQuery, updateProgValues);
-    console.log(`Programação atualizada para filme ID: ${idFilme}`);
-  } else {
-    // Programação não existe, insere
-    const insertProgQuery = `
-      INSERT INTO programacao
-        (id_filme, id_cinema, status, data_estreia, semana_inicio, semana_fim,
-         segunda, terca, quarta, quinta, sexta, sabado, domingo)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-    `;
+    if (progResult.rows.length > 0) {
+      // Programação já existe, atualiza
+      const updateProgQuery = `
+        UPDATE programacao SET
+          status = $4, data_estreia = $5, semana_fim = $6, segunda = $7,
+          terca = $8, quarta = $9, quinta = $10, sexta = $11,
+          sabado = $12, domingo = $13
+        WHERE id_filme = $1 AND id_cinema = $2 AND semana_inicio = $3
+      `;
 
-    const insertProgValues = [
-      idFilme,
-      idCinema,
-      "em cartaz",
-      dataEstreia,
-      semanaInicio,
-      semanaFim,
-      sessoesSemana.segunda,
-      sessoesSemana.terca,
-      sessoesSemana.quarta,
-      sessoesSemana.quinta,
-      sessoesSemana.sexta,
-      sessoesSemana.sabado,
-      sessoesSemana.domingo,
-    ];
+      const updateProgValues = [
+        idFilme,
+        idCinema,
+        semanaInicio,
+        "em cartaz",
+        dataEstreia,
+        semanaFim,
+        sessoesSemana.segunda,
+        sessoesSemana.terca,
+        sessoesSemana.quarta,
+        sessoesSemana.quinta,
+        sessoesSemana.sexta,
+        sessoesSemana.sabado,
+        sessoesSemana.domingo,
+      ];
 
-    await pool.query(insertProgQuery, insertProgValues);
-    console.log(`Programação inserida para filme ID: ${idFilme}`);
+      await pool.query(updateProgQuery, updateProgValues);
+      console.log(
+        `Programação atualizada para filme ID: ${idFilme} (Semana: ${semanaInicio})`
+      );
+    } else {
+      // Programação não existe, insere
+      const insertProgQuery = `
+        INSERT INTO programacao
+          (id_filme, id_cinema, status, data_estreia, semana_inicio, semana_fim,
+           segunda, terca, quarta, quinta, sexta, sabado, domingo)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      `;
+
+      const insertProgValues = [
+        idFilme,
+        idCinema,
+        "em cartaz",
+        dataEstreia,
+        semanaInicio,
+        semanaFim,
+        sessoesSemana.segunda,
+        sessoesSemana.terca,
+        sessoesSemana.quarta,
+        sessoesSemana.quinta,
+        sessoesSemana.sexta,
+        sessoesSemana.sabado,
+        sessoesSemana.domingo,
+      ];
+
+      await pool.query(insertProgQuery, insertProgValues);
+      console.log(
+        `Programação inserida para filme ID: ${idFilme} (Semana: ${semanaInicio})`
+      );
+    }
   }
 }
 
@@ -398,6 +425,66 @@ async function main() {
         id: 16,
         url: "https://multicine.vendabem.com/vendabemweb/ws/integracao_site_filmes/",
         payload: { usa_pai_filho: "1", filiais: "016" },
+      },
+      {
+        id: 35,
+        url: "https://arcoplex.vendabem.com/vendabemweb/ws/integracao_site_filmes/",
+        payload: { usa_pai_filho: "1", filiais: "005" },
+      },
+      {
+        id: 37,
+        url: "https://arcoplex.vendabem.com/vendabemweb/ws/integracao_site_filmes/",
+        payload: { usa_pai_filho: "1", filiais: "013" },
+      },
+      {
+        id: 36,
+        url: "https://arcoplex.vendabem.com/vendabemweb/ws/integracao_site_filmes/",
+        payload: { usa_pai_filho: "1", filiais: "036" },
+      },
+      {
+        id: 38,
+        url: "https://arcoplex.vendabem.com/vendabemweb/ws/integracao_site_filmes/",
+        payload: { usa_pai_filho: "1", filiais: "032" },
+      },
+      {
+        id: 47,
+        url: "https://arcoplex.vendabem.com/vendabemweb/ws/integracao_site_filmes/",
+        payload: { usa_pai_filho: "1", filiais: "047" },
+      },
+      {
+        id: 46,
+        url: "https://arcoplex.vendabem.com/vendabemweb/ws/integracao_site_filmes/",
+        payload: { usa_pai_filho: "1", filiais: "046" },
+      },
+      {
+        id: 51,
+        url: "https://arcoplex.vendabem.com/vendabemweb/ws/integracao_site_filmes/",
+        payload: { usa_pai_filho: "1", filiais: "051" },
+      },
+      {
+        id: 54,
+        url: "https://arcoplex.vendabem.com/vendabemweb/ws/integracao_site_filmes/",
+        payload: { usa_pai_filho: "1", filiais: "054" },
+      },
+      {
+        id: 55,
+        url: "https://arcoplex.vendabem.com/vendabemweb/ws/integracao_site_filmes/",
+        payload: { usa_pai_filho: "1", filiais: "055" },
+      },
+      {
+        id: 59,
+        url: "https://arcoplex.vendabem.com/vendabemweb/ws/integracao_site_filmes/",
+        payload: { usa_pai_filho: "1", filiais: "059" },
+      },
+      {
+        id: 60,
+        url: "https://arcoplex.vendabem.com/vendabemweb/ws/integracao_site_filmes/",
+        payload: { usa_pai_filho: "1", filiais: "060" },
+      },
+      {
+        id: 61,
+        url: "https://arcoplex.vendabem.com/vendabemweb/ws/integracao_site_filmes/",
+        payload: { usa_pai_filho: "1", filiais: "061" },
       },
     ];
 

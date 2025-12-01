@@ -27,6 +27,21 @@ function getCineSemana(dateStr: string) {
   };
 }
 
+function groupSessionsByCineWeek(sessoes: any[]) {
+  const groups: Record<string, any[]> = {};
+
+  sessoes.forEach((sessao) => {
+    const dateYYYYMMDD = dayjs(sessao.data, "DD/MM/YYYY").format("YYYY-MM-DD");
+    const { semanaInicio } = getCineSemana(dateYYYYMMDD);
+    if (!groups[semanaInicio]) {
+      groups[semanaInicio] = [];
+    }
+    groups[semanaInicio].push(sessao);
+  });
+
+  return groups;
+}
+
 function mapSessionsByWeekDays(sessoes: any[]) {
   const dias: Record<string, Record<string, string[]>> = {
     segunda: {},
@@ -215,54 +230,60 @@ async function processProgramacao(
   idCinema: number
 ) {
   const { id: idFilme, data_estreia } = filmeInfo;
-  const qualquerData = sessoes[0].data;
-  const { semanaInicio, semanaFim } = getCineSemana(
-    dayjs(qualquerData, "DD/MM/YYYY").format("YYYY-MM-DD")
-  );
-  const sessoesSemana = mapSessionsByWeekDays(sessoes);
 
-  const checkProgQuery = `
-    SELECT id FROM programacao 
-    WHERE id_filme = $1 AND id_cinema = $2
-  `;
-  const { rows: progRows } = await pool.query(checkProgQuery, [
-    idFilme,
-    idCinema,
-  ]);
+  // Agrupa sessões por cine-semana
+  const sessionsByWeek = groupSessionsByCineWeek(sessoes);
 
-  const progValues = [
-    idFilme,
-    idCinema,
-    "em cartaz",
-    data_estreia,
-    semanaInicio,
-    semanaFim,
-    sessoesSemana.segunda,
-    sessoesSemana.terca,
-    sessoesSemana.quarta,
-    sessoesSemana.quinta,
-    sessoesSemana.sexta,
-    sessoesSemana.sabado,
-    sessoesSemana.domingo,
-  ];
+  for (const [semanaInicio, weekSessions] of Object.entries(sessionsByWeek)) {
+    const semanaInicioDate = dayjs(semanaInicio, "YYYY-MM-DD");
+    const semanaFim = semanaInicioDate.add(6, "day").format("YYYY-MM-DD");
 
-  if (progRows.length > 0) {
-    const updateProgQuery = `
-      UPDATE programacao SET
-        status = $3, data_estreia = $4, semana_inicio = $5, semana_fim = $6,
-        segunda = $7, terca = $8, quarta = $9, quinta = $10,
-        sexta = $11, sabado = $12, domingo = $13
-      WHERE id_filme = $1 AND id_cinema = $2
+    const sessoesSemana = mapSessionsByWeekDays(weekSessions);
+
+    const checkProgQuery = `
+      SELECT id FROM programacao 
+      WHERE id_filme = $1 AND id_cinema = $2 AND semana_inicio = $3
     `;
-    await pool.query(updateProgQuery, progValues);
-  } else {
-    const insertProgQuery = `
-      INSERT INTO programacao
-        (id_filme, id_cinema, status, data_estreia, semana_inicio, semana_fim,
-         segunda, terca, quarta, quinta, sexta, sabado, domingo)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-    `;
-    await pool.query(insertProgQuery, progValues);
+    const { rows: progRows } = await pool.query(checkProgQuery, [
+      idFilme,
+      idCinema,
+      semanaInicio,
+    ]);
+
+    const progValues = [
+      idFilme,
+      idCinema,
+      "em cartaz",
+      data_estreia,
+      semanaInicio,
+      semanaFim,
+      sessoesSemana.segunda,
+      sessoesSemana.terca,
+      sessoesSemana.quarta,
+      sessoesSemana.quinta,
+      sessoesSemana.sexta,
+      sessoesSemana.sabado,
+      sessoesSemana.domingo,
+    ];
+
+    if (progRows.length > 0) {
+      const updateProgQuery = `
+        UPDATE programacao SET
+          status = $3, data_estreia = $4, semana_inicio = $5, semana_fim = $6,
+          segunda = $7, terca = $8, quarta = $9, quinta = $10,
+          sexta = $11, sabado = $12, domingo = $13
+        WHERE id_filme = $1 AND id_cinema = $2 AND semana_inicio = $5
+      `;
+      await pool.query(updateProgQuery, progValues);
+    } else {
+      const insertProgQuery = `
+        INSERT INTO programacao
+          (id_filme, id_cinema, status, data_estreia, semana_inicio, semana_fim,
+           segunda, terca, quarta, quinta, sexta, sabado, domingo)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      `;
+      await pool.query(insertProgQuery, progValues);
+    }
   }
 }
 
