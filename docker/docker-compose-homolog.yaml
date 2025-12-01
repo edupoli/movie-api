@@ -1,17 +1,17 @@
 services:
   postgres:
     image: pgvector/pgvector:pg17
-    container_name: postgres-producao
+    container_name: postgres-homolog
     restart: unless-stopped
     ports:
-      - "30100:5432"
+      - "30500:5432"
     environment:
       - POSTGRES_USER=mooviai
       - POSTGRES_PASSWORD=ServerMoovia123
       - POSTGRES_DB=cinemas
       - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 --auth-local=scram-sha-256
     volumes:
-      - pgdata-producao:/var/lib/postgresql/data
+      - pgdata-homolog:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/00-init.sql
       - ./insert-cinemas.sql:/docker-entrypoint-initdb.d/01-insert-cinemas.sql
       - ./insert-ingressos.sql:/docker-entrypoint-initdb.d/02-insert-ingressos.sql
@@ -23,4 +23,4 @@ services:
       -c ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
 
 volumes:
-  pgdata-producao:
+  pgdata-homolog:
