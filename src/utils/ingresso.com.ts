@@ -125,16 +125,42 @@ async function fetchSessions(cityId: string, theaterId: string) {
 async function insertOrUpdateMovie(movie: any, idCinema: number) {
   const idFilmeIngressoCom = parseInt(movie.id);
 
+  // Validar se o ID do filme existe
+  if (!idFilmeIngressoCom || isNaN(idFilmeIngressoCom)) {
+    console.log(
+      `Ingresso.com - Filme ${movie.title} não possui ID válido, pulando...`
+    );
+    return null;
+  }
+
   const checkQuery = `
-    SELECT id, data_estreia 
+    SELECT id, data_estreia, nome
     FROM filmes 
     WHERE id_filme_ingresso_com = $1 AND id_cinema = $2
+    AND id_filme_ingresso_com IS NOT NULL
   `;
+
+  console.log(
+    `Ingresso.com - Verificando filme ID:${idFilmeIngressoCom} "${movie.title}" no cinema ${idCinema}`
+  );
 
   const { rows: existingRows } = await pool.query(checkQuery, [
     idFilmeIngressoCom,
     idCinema,
   ]);
+
+  if (existingRows.length > 1) {
+    console.error(
+      `Ingresso.com - ERRO: Encontrados ${existingRows.length} registros duplicados para filme ID:${idFilmeIngressoCom} no cinema ${idCinema}`
+    );
+    existingRows.forEach((row, i) => {
+      console.error(`  - Duplicata ${i + 1}: DB ID ${row.id} - "${row.nome}"`);
+    });
+  }
+
+  console.log(
+    `Ingresso.com - Filme ID:${idFilmeIngressoCom} "${movie.title}": ${existingRows.length} encontrados`
+  );
 
   const dataEstreia = movie.premiereDate?.localDate
     ? movie.premiereDate.localDate.split("T")[0]
@@ -149,14 +175,16 @@ async function insertOrUpdateMovie(movie: any, idCinema: number) {
   const generos = Array.isArray(movie.genres) ? movie.genres.join(", ") : "";
   const duracao = movie.duration ? parseFloat(movie.duration) : null;
 
+  // Se existem registros (usar o primeiro em caso de duplicatas)
   if (existingRows.length > 0) {
-    // Atualiza filme existente
+    const existingMovie = existingRows[0]; // Usar sempre o primeiro registro
+    // Atualiza filme existente usando o ID específico
     const updateQuery = `
       UPDATE filmes SET
         nome = $1, sinopse = $2, duracao = $3, classificacao = $4,
         genero = $5, diretor = $6, elenco_principal = $7, data_estreia = $8,
         url_poster = $9, url_trailer = $10, updated_at = CURRENT_TIMESTAMP
-      WHERE id_filme_ingresso_com = $11 AND id_cinema = $12
+      WHERE id = $11
       RETURNING id, data_estreia;
     `;
 
@@ -171,9 +199,12 @@ async function insertOrUpdateMovie(movie: any, idCinema: number) {
       dataEstreia,
       movie.imageFeatured || "",
       null,
-      idFilmeIngressoCom,
-      idCinema,
+      existingMovie.id, // Usar o ID do registro existente
     ];
+
+    console.log(
+      `Ingresso.com - Atualizando filme DB_ID:${existingMovie.id} API_ID:${idFilmeIngressoCom} "${movie.title}" no cinema ${idCinema}`
+    );
 
     return await pool.query(updateQuery, updateValues);
   } else {
@@ -204,16 +235,26 @@ async function insertOrUpdateMovie(movie: any, idCinema: number) {
       idCinema,
     ];
 
+    console.log(
+      `Ingresso.com - Inserindo novo filme ID:${idFilmeIngressoCom} "${movie.title}" no cinema ${idCinema}`
+    );
+
     return await pool.query(insertQuery, values);
   }
 }
 
 async function processMovie(movie: any, idCinema: number) {
   try {
-    const { rows } = await insertOrUpdateMovie(movie, idCinema);
+    const result = await insertOrUpdateMovie(movie, idCinema);
+
+    if (!result) {
+      console.log(`Filme ${movie.title} não foi processado (ID inválido)`);
+      return null;
+    }
+
     return {
-      id: rows[0].id,
-      data_estreia: rows[0].data_estreia,
+      id: result.rows[0].id,
+      data_estreia: result.rows[0].data_estreia,
       idFilmeIngressoCom: movie.id,
     };
   } catch (error) {
@@ -308,14 +349,57 @@ async function syncIngressoCom(
       `Encontrados ${filmes.length} filmes para processar no cinema ${idCinema}`
     );
 
-    // 2. Processar filmes em paralelo
-    const filmePromises = filmes.map((filme) => processMovie(filme, idCinema));
+    // Verificar se há filmes duplicados na resposta da API
+    const filmesUnicos = new Map();
+    const filmesDuplicados = [];
+
+    filmes.forEach((filme) => {
+      const id = parseInt(filme.id);
+      if (filmesUnicos.has(id)) {
+        filmesDuplicados.push(`ID: ${id} - ${filme.title}`);
+      } else {
+        filmesUnicos.set(id, filme);
+      }
+    });
+
+    if (filmesDuplicados.length > 0) {
+      console.warn(
+        `Ingresso.com - ATENÇÃO: ${filmesDuplicados.length} filmes duplicados detectados na API:`
+      );
+      filmesDuplicados.forEach((filme) => console.warn(`  - ${filme}`));
+    }
+
+    console.log(
+      `Processando ${filmesUnicos.size} filmes únicos de ${filmes.length} total`
+    );
+
+    // 2. Processar apenas filmes únicos em paralelo
+    const filmesArray = Array.from(filmesUnicos.values());
+    const filmePromises = filmesArray.map((filme) =>
+      processMovie(filme, idCinema)
+    );
     const filmesProcessados = await Promise.all(filmePromises);
 
-    // 3. Criar mapa de filmes
+    // 3. Filtrar filmes válidos e criar mapa
+    const filmesValidos = filmesProcessados.filter((filme, index) => {
+      if (filme === null) {
+        console.log(
+          `Filme ${filmesArray[index].title} foi ignorado (ID inválido)`
+        );
+        return false;
+      }
+      return true;
+    });
+
+    console.log(
+      `${filmesValidos.length} filmes válidos processados de ${filmesArray.length} filmes únicos`
+    );
+
     const filmeIdMap = new Map<string, { id: number; data_estreia: string }>();
-    filmesProcessados.forEach((filmeProc, index) => {
-      filmeIdMap.set(filmes[index].id, {
+    filmesValidos.forEach((filmeProc, index) => {
+      const originalIndex = filmesProcessados.findIndex((f) => f === filmeProc);
+      const filmeOriginal = filmesArray[originalIndex];
+      filmeIdMap.set(filmeOriginal.id, {
         id: filmeProc.id,
         data_estreia: filmeProc.data_estreia
           ? filmeProc.data_estreia.toISOString().split("T")[0]

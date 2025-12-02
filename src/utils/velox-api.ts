@@ -166,17 +166,30 @@ async function insertOrUpdateMovie(
 ) {
   const movieIdentifier = parseInt(movie.movieIdentifier);
 
+  // Validar se o movieIdentifier existe
+  if (!movieIdentifier || isNaN(movieIdentifier)) {
+    console.log(
+      `Velox - Filme ${details.name} não possui movieIdentifier válido, pulando...`
+    );
+    return null;
+  }
+
   // Primeiro verifica se o filme já existe pelo movieIdentifier e id_cinema
   const checkQuery = `
     SELECT id, data_estreia 
     FROM filmes 
     WHERE movieIdentifier = $1 AND id_cinema = $2
+    AND movieIdentifier IS NOT NULL
   `;
 
   const { rows: existingRows } = await pool.query(checkQuery, [
     movieIdentifier,
     idCinema,
   ]);
+
+  console.log(
+    `Velox - Verificando filme ${movieIdentifier} no cinema ${idCinema}: ${existingRows.length} encontrados`
+  );
 
   const values = [
     details.name,
@@ -231,11 +244,16 @@ async function processMovie(movie: any, details: any, idCinema: number = 10) {
       `Processando filme: ${details.name} (ID: ${movie.movieIdentifier})`
     );
 
-    const { rows } = await insertOrUpdateMovie(movie, details, idCinema);
+    const result = await insertOrUpdateMovie(movie, details, idCinema);
+
+    if (!result) {
+      console.log(`Filme ${details.name} não foi processado (ID inválido)`);
+      return null;
+    }
 
     return {
-      id: rows[0].id,
-      data_estreia: rows[0].data_estreia,
+      id: result.rows[0].id,
+      data_estreia: result.rows[0].data_estreia,
       movieIdentifier: movie.movieIdentifier,
     };
   } catch (error) {

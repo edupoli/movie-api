@@ -119,16 +119,33 @@ async function processMovieData(filme: any, idCinema: number) {
     const nomeFormatado = toTitleCase(nomeFilme);
     const codigoFilme = filme.codigoFilme;
 
+    // Validar se o código do filme existe
+    if (!codigoFilme || codigoFilme === null || codigoFilme === undefined) {
+      console.log(
+        `VendaBem - Filme ${nomeFormatado} não possui código válido, pulando...`
+      );
+      return null;
+    }
+
     // Verifica se o filme já existe para este cinema e codigo_filme
     const checkFilmeQuery = `
       SELECT id, data_estreia FROM filmes 
       WHERE id_cinema = $1 AND codigo_filme = $2
+      AND codigo_filme IS NOT NULL
     `;
+
+    console.log(
+      `VendaBem - Verificando filme ${codigoFilme} no cinema ${idCinema}`
+    );
 
     let filmeResult = await pool.query(checkFilmeQuery, [
       idCinema,
       codigoFilme,
     ]);
+
+    console.log(
+      `VendaBem - Filme ${codigoFilme}: ${filmeResult.rows.length} encontrados`
+    );
     let idFilme: number;
     let dataEstreia: Date;
 
@@ -160,10 +177,13 @@ async function processMovieData(filme: any, idCinema: number) {
 
       await pool.query(updateFilmeQuery, updateValues);
       console.log(
-        `Filme atualizado: ${nomeFormatado} (Cinema: ${idCinema}, Código: ${codigoFilme})`
+        `VendaBem - Filme atualizado: ${nomeFormatado} (Cinema: ${idCinema}, Código: ${codigoFilme})`
       );
     } else {
       // Filme não existe, faz insert
+      console.log(
+        `VendaBem - Inserindo novo filme: ${nomeFormatado} (Cinema: ${idCinema}, Código: ${codigoFilme})`
+      );
       const insertFilmeQuery = `
         INSERT INTO filmes
           (id_cinema, nome, sinopse, duracao, classificacao, genero, url_poster, url_trailer, data_estreia, codigo_filme)
