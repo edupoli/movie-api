@@ -108,25 +108,54 @@ CREATE INDEX IF NOT EXISTS idx_filmes_cinema_ingresso ON filmes (id_cinema, id_f
 CREATE INDEX IF NOT EXISTS idx_programacao_filme_cinema ON programacao (id_filme, id_cinema);
 CREATE INDEX IF NOT EXISTS idx_filmes_cinema_codigo ON filmes (id_cinema, codigo_filme);
 
+-- =============================================
+-- Constraints únicas para evitar duplicidade por parceiro + cinema
+-- Executar uma única vez (idempotente com DO $$ ... $$)
+-- =============================================
 
--- ============================================================
--- CONSTRAINT: filmes_cinema_codigo_unique (IF NOT EXISTS manual)
--- ============================================================
 DO $$
 BEGIN
+    -- 1. Programacao: uma programação por filme + cinema + semana
     IF NOT EXISTS (
-        SELECT 1 
-        FROM pg_constraint 
-        WHERE conname = 'filmes_cinema_codigo_unique'
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'uq_programacao_filme_cinema_semana'
     ) THEN
-        ALTER TABLE filmes 
-        ADD CONSTRAINT filmes_cinema_codigo_unique UNIQUE (id_cinema, codigo_filme);
+        ALTER TABLE programacao
+        ADD CONSTRAINT uq_programacao_filme_cinema_semana
+        UNIQUE (id_filme, id_cinema, semana_inicio);
     END IF;
-END$$;
 
-ALTER TABLE filmes
-ADD CONSTRAINT filmes_unique UNIQUE (id_filme_ingresso_com, id_cinema);
+    -- 2. Filmes - Ingresso.com
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'uq_filmes_ingresso_com_cinema'
+    ) THEN
+        ALTER TABLE filmes
+        ADD CONSTRAINT uq_filmes_ingresso_com_cinema
+        UNIQUE (id_filme_ingresso_com, id_cinema);
+    END IF;
 
+    -- 3. Filmes - VendaBem
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'uq_filmes_venda_bem_cinema'
+    ) THEN
+        ALTER TABLE filmes
+        ADD CONSTRAINT uq_filmes_venda_bem_cinema
+        UNIQUE (codigo_filme, id_cinema);
+    END IF;
+
+    -- 4. Filmes - Velox Tickets
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint 
+        WHERE conname = 'uq_filmes_velox_cinema'
+    ) THEN
+        ALTER TABLE filmes
+        ADD CONSTRAINT uq_filmes_velox_cinema
+        UNIQUE (movieIdentifier, id_cinema);
+    END IF;
+
+END $$;
 
 -- ======================================
 -- Usuário admin

@@ -1,5 +1,5 @@
 import axios from "axios";
-import { Pool } from "pg";
+import { Pool, PoolClient } from "pg";
 import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import customParseFormat from "dayjs/plugin/customParseFormat";
@@ -96,7 +96,6 @@ function mapSessionsByWeekDays(sessoes: any[]) {
     dias[diaSemana][s.data].push(`${horaFormatada} ${tipo}`);
   });
 
-  // Monta string final para cada dia da semana com fallback
   const resultado: Record<string, string> = {};
   for (const [dia, datas] of Object.entries(dias)) {
     const partes: string[] = [];
@@ -105,191 +104,110 @@ function mapSessionsByWeekDays(sessoes: any[]) {
         partes.push(`${data} ${horarios.join(", ")}`);
       }
     }
-    // Se não há sessões para o dia, usa "(Sem Sessao)" como fallback
     resultado[dia] = partes.length > 0 ? partes.join(", ") : "(Sem Sessao)";
   }
   return resultado;
 }
 
 // ================== MOVIE PROCESSING ==================
-async function processMovieData(filme: any, idCinema: number) {
-  let nomeFilme = "";
-  try {
-    nomeFilme = filme.filme_site || filme.nome_filme;
-    const nomeFormatado = toTitleCase(nomeFilme);
+async function upsertMovies(
+  movies: any[],
+  idCinema: number,
+  client: PoolClient
+) {
+  if (movies.length === 0) return new Map();
+
+  const values: string[] = [];
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  const resultMap = new Map();
+
+  movies.forEach((filme) => {
     const codigoFilme = filme.codigoFilme;
+    if (!codigoFilme) return;
 
-    // Validar se o código do filme existe
-    if (!codigoFilme || codigoFilme === null || codigoFilme === undefined) {
-      console.log(
-        `VendaBem - Filme ${nomeFormatado} não possui código válido, pulando...`
-      );
-      return null;
-    }
-
-    // Verifica se o filme já existe para este cinema e codigo_filme
-    const checkFilmeQuery = `
-      SELECT id, data_estreia FROM filmes 
-      WHERE id_cinema = $1 AND codigo_filme = $2
-      AND codigo_filme IS NOT NULL
-    `;
-
-    console.log(
-      `VendaBem - Verificando filme ${codigoFilme} no cinema ${idCinema}`
+    const nomeFormatado = toTitleCase(filme.filme_site || filme.nome_filme);
+    const dataEstreia = dayjs(filme.data_estreia, "DD/MM/YYYY").format(
+      "YYYY-MM-DD"
     );
 
-    let filmeResult = await pool.query(checkFilmeQuery, [
+    const movieData = [
       idCinema,
-      codigoFilme,
-    ]);
-
-    console.log(
-      `VendaBem - Filme ${codigoFilme}: ${filmeResult.rows.length} encontrados`
-    );
-    let idFilme: number;
-    let dataEstreia: Date;
-
-    if (filmeResult.rows.length > 0) {
-      // Filme já existe, atualiza os dados
-      idFilme = filmeResult.rows[0].id;
-      dataEstreia = filmeResult.rows[0].data_estreia;
-
-      const updateFilmeQuery = `
-        UPDATE filmes SET
-          nome = $3, sinopse = $4, duracao = $5, classificacao = $6,
-          genero = $7, url_poster = $8, url_trailer = $9, data_estreia = $10,
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id_cinema = $1 AND codigo_filme = $2
-      `;
-
-      const updateValues = [
-        idCinema,
-        codigoFilme,
-        nomeFormatado,
-        filme.sinopse || "",
-        filme.duracao,
-        filme.classificacao,
-        filme.genero,
-        filme.cartaz,
-        filme.trailer,
-        dayjs(filme.data_estreia, "DD/MM/YYYY").format("YYYY-MM-DD"),
-      ];
-
-      await pool.query(updateFilmeQuery, updateValues);
-      console.log(
-        `VendaBem - Filme atualizado: ${nomeFormatado} (Cinema: ${idCinema}, Código: ${codigoFilme})`
-      );
-    } else {
-      // Filme não existe, faz insert
-      console.log(
-        `VendaBem - Inserindo novo filme: ${nomeFormatado} (Cinema: ${idCinema}, Código: ${codigoFilme})`
-      );
-      const insertFilmeQuery = `
-        INSERT INTO filmes
-          (id_cinema, nome, sinopse, duracao, classificacao, genero, url_poster, url_trailer, data_estreia, codigo_filme)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-        RETURNING id, data_estreia;
-      `;
-
-      const insertValues = [
-        idCinema,
-        nomeFormatado,
-        filme.sinopse || "",
-        filme.duracao,
-        filme.classificacao,
-        filme.genero,
-        filme.cartaz,
-        filme.trailer,
-        dayjs(filme.data_estreia, "DD/MM/YYYY").format("YYYY-MM-DD"),
-        codigoFilme,
-      ];
-
-      const { rows } = await pool.query(insertFilmeQuery, insertValues);
-      idFilme = rows[0].id;
-      dataEstreia = rows[0].data_estreia;
-      console.log(
-        `Filme inserido: ${nomeFormatado} (Cinema: ${idCinema}, Código: ${codigoFilme})`
-      );
-    }
-
-    return {
-      idFilme,
+      nomeFormatado,
+      filme.sinopse || "",
+      filme.duracao,
+      filme.classificacao,
+      filme.genero,
+      filme.cartaz,
+      filme.trailer,
       dataEstreia,
       codigoFilme,
-      nomeFormatado,
-      sessoes: filme.sessoes,
-    };
-  } catch (err) {
-    console.error(`Erro ao processar filme ${nomeFilme}:`, err);
-    throw err;
-  }
+    ];
+
+    const placeholders = movieData.map(() => `$${paramIndex++}`).join(", ");
+    values.push(`(${placeholders})`);
+    params.push(...movieData);
+  });
+
+  if (values.length === 0) return resultMap;
+
+  const upsertQuery = `
+    INSERT INTO filmes (
+      id_cinema, nome, sinopse, duracao, classificacao, genero, 
+      url_poster, url_trailer, data_estreia, codigo_filme
+    )
+    VALUES ${values.join(", ")}
+    ON CONFLICT (id_cinema, codigo_filme) DO UPDATE SET
+      nome = EXCLUDED.nome,
+      sinopse = EXCLUDED.sinopse,
+      duracao = EXCLUDED.duracao,
+      classificacao = EXCLUDED.classificacao,
+      genero = EXCLUDED.genero,
+      url_poster = EXCLUDED.url_poster,
+      url_trailer = EXCLUDED.url_trailer,
+      data_estreia = EXCLUDED.data_estreia,
+      updated_at = CURRENT_TIMESTAMP
+    RETURNING id, data_estreia, codigo_filme;
+  `;
+
+  const { rows } = await client.query(upsertQuery, params);
+
+  rows.forEach((row) => {
+    resultMap.set(row.codigo_filme, {
+      id: row.id,
+      data_estreia: row.data_estreia,
+    });
+  });
+
+  return resultMap;
 }
 
 // ================== PROGRAMMING PROCESSING ==================
-async function processProgramacao(filmeData: any, idCinema: number) {
-  const { idFilme, dataEstreia, sessoes } = filmeData;
+async function upsertProgramacao(
+  filmesAgrupados: Map<any, any>,
+  filmeIdMap: Map<any, any>,
+  idCinema: number,
+  client: PoolClient
+) {
+  const values: string[] = [];
+  const params: any[] = [];
+  let paramIndex = 1;
 
-  // Agrupa sessões por cine-semana
-  const sessionsByWeek = groupSessionsByCineWeek(sessoes);
+  filmesAgrupados.forEach((filme) => {
+    const codigoFilme = filme.codigoFilme;
+    const filmeInfo = filmeIdMap.get(codigoFilme);
+    if (!filmeInfo) return;
 
-  // Processa cada cine-semana
-  for (const [semanaInicio, weekSessions] of Object.entries(sessionsByWeek)) {
-    const semanaInicioDate = dayjs(semanaInicio, "YYYY-MM-DD");
-    const semanaFim = semanaInicioDate.add(6, "day").format("YYYY-MM-DD");
+    const { id: idFilme, data_estreia: dataEstreia } = filmeInfo;
+    const sessionsByWeek = groupSessionsByCineWeek(filme.sessoes);
 
-    const sessoesSemana = mapSessionsByWeekDays(weekSessions);
+    Object.entries(sessionsByWeek).forEach(([semanaInicio, weekSessions]) => {
+      const semanaInicioDate = dayjs(semanaInicio, "YYYY-MM-DD");
+      const semanaFim = semanaInicioDate.add(6, "day").format("YYYY-MM-DD");
+      const sessoesSemana = mapSessionsByWeekDays(weekSessions);
 
-    const checkProgQuery = `
-      SELECT id FROM programacao 
-      WHERE id_filme = $1 AND id_cinema = $2 AND semana_inicio = $3
-    `;
-
-    const progResult = await pool.query(checkProgQuery, [
-      idFilme,
-      idCinema,
-      semanaInicio,
-    ]);
-
-    if (progResult.rows.length > 0) {
-      // Programação já existe, atualiza
-      const updateProgQuery = `
-        UPDATE programacao SET
-          status = $4, data_estreia = $5, semana_fim = $6, segunda = $7,
-          terca = $8, quarta = $9, quinta = $10, sexta = $11,
-          sabado = $12, domingo = $13, updated_at = CURRENT_TIMESTAMP
-        WHERE id_filme = $1 AND id_cinema = $2 AND semana_inicio = $3
-      `;
-
-      const updateProgValues = [
-        idFilme,
-        idCinema,
-        semanaInicio,
-        "em cartaz",
-        dataEstreia,
-        semanaFim,
-        sessoesSemana.segunda,
-        sessoesSemana.terca,
-        sessoesSemana.quarta,
-        sessoesSemana.quinta,
-        sessoesSemana.sexta,
-        sessoesSemana.sabado,
-        sessoesSemana.domingo,
-      ];
-
-      await pool.query(updateProgQuery, updateProgValues);
-      console.log(
-        `Programação atualizada para filme ID: ${idFilme} (Semana: ${semanaInicio})`
-      );
-    } else {
-      // Programação não existe, insere
-      const insertProgQuery = `
-        INSERT INTO programacao
-          (id_filme, id_cinema, status, data_estreia, semana_inicio, semana_fim,
-           segunda, terca, quarta, quinta, sexta, sabado, domingo)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-      `;
-
-      const insertProgValues = [
+      const progData = [
         idFilme,
         idCinema,
         "em cartaz",
@@ -305,18 +223,45 @@ async function processProgramacao(filmeData: any, idCinema: number) {
         sessoesSemana.domingo,
       ];
 
-      await pool.query(insertProgQuery, insertProgValues);
-      console.log(
-        `Programação inserida para filme ID: ${idFilme} (Semana: ${semanaInicio})`
-      );
-    }
-  }
+      const placeholders = progData.map(() => `$${paramIndex++}`).join(", ");
+      values.push(`(${placeholders})`);
+      params.push(...progData);
+    });
+  });
+
+  if (values.length === 0) return;
+
+  const upsertQuery = `
+    INSERT INTO programacao (
+      id_filme, id_cinema, status, data_estreia, semana_inicio, semana_fim,
+      segunda, terca, quarta, quinta, sexta, sabado, domingo
+    )
+    VALUES ${values.join(", ")}
+    ON CONFLICT (id_filme, id_cinema, semana_inicio) DO UPDATE SET
+      status = EXCLUDED.status,
+      data_estreia = EXCLUDED.data_estreia,
+      semana_fim = EXCLUDED.semana_fim,
+      segunda = EXCLUDED.segunda,
+      terca = EXCLUDED.terca,
+      quarta = EXCLUDED.quarta,
+      quinta = EXCLUDED.quinta,
+      sexta = EXCLUDED.sexta,
+      sabado = EXCLUDED.sabado,
+      domingo = EXCLUDED.domingo,
+      updated_at = CURRENT_TIMESTAMP;
+  `;
+
+  await client.query(upsertQuery, params);
 }
 
 // ================== MAIN LOGIC ==================
 async function syncFilmes(idCinema: number, url: string, payload: any) {
+  let client: PoolClient | null = null;
   try {
     console.log(`Iniciando sincronização para cinema ${idCinema}...`);
+
+    client = await pool.connect();
+    await client.query("BEGIN");
 
     const response = await axios.post(url, payload, {
       headers: {
@@ -329,13 +274,11 @@ async function syncFilmes(idCinema: number, url: string, payload: any) {
 
     const filmes = response.data;
 
-    // Agrupa filmes por codigo_filme das sessões para identificar filmes únicos
     const filmesAgrupados = new Map();
 
     for (const filme of filmes) {
       if (!filme.sessoes || filme.sessoes.length === 0) continue;
 
-      // Pega o codigo_filme da primeira sessão (todas as sessões do mesmo filme têm o mesmo codigo_filme)
       const codigoFilme = filme.sessoes[0].codigo_filme;
 
       if (!filmesAgrupados.has(codigoFilme)) {
@@ -346,33 +289,22 @@ async function syncFilmes(idCinema: number, url: string, payload: any) {
       }
     }
 
-    // 1. Processar todos os filmes em paralelo
-    const moviePromises = Array.from(filmesAgrupados.values()).map((filme) =>
-      processMovieData(filme, idCinema).catch((error) => {
-        console.error(`Erro ao processar filme ${filme.nome_filme}:`, error);
-        return null;
-      })
-    );
+    const filmesArray = Array.from(filmesAgrupados.values());
 
-    const processedMovies = await Promise.all(moviePromises);
+    const filmeIdMap = await upsertMovies(filmesArray, idCinema, client);
 
-    // Filtrar resultados válidos
-    const validMovies = processedMovies.filter((movie) => movie !== null);
+    await upsertProgramacao(filmesAgrupados, filmeIdMap, idCinema, client);
 
-    // 2. Processar programação em paralelo
-    const progPromises = validMovies.map((filmeData) =>
-      processProgramacao(filmeData, idCinema).catch((error) => {
-        console.error(`Erro ao processar programação:`, error);
-      })
-    );
-
-    await Promise.all(progPromises);
+    await client.query("COMMIT");
 
     console.log(
-      `Sincronização concluída para cinema ${idCinema}! Processados ${validMovies.length} filmes únicos.`
+      `Sincronização concluída para cinema ${idCinema}! Processados ${filmeIdMap.size} filmes únicos.`
     );
   } catch (err) {
+    if (client) await client.query("ROLLBACK");
     console.error(`Erro na sincronização do cinema ${idCinema}:`, err);
+  } finally {
+    if (client) client.release();
   }
 }
 
@@ -509,7 +441,6 @@ async function main() {
       },
     ];
 
-    // Processar todos os cinemas em paralelo com Promise.all
     const cinemaPromises = cinemas.map((cinema) => {
       console.log(`Processando cinema ${cinema.id}...`);
       return syncFilmes(cinema.id, cinema.url, cinema.payload)
