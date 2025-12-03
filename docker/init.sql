@@ -124,6 +124,9 @@ BEGIN
     END IF;
 END$$;
 
+ALTER TABLE filmes
+ADD CONSTRAINT filmes_unique UNIQUE (id_filme_ingresso_com, id_cinema);
+
 
 -- ======================================
 -- Usuário admin

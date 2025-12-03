@@ -124,143 +124,87 @@ async function fetchSessions(cityId: string, theaterId: string) {
 // ================== MOVIE PROCESSING ==================
 async function insertOrUpdateMovie(movie: any, idCinema: number) {
   const idFilmeIngressoCom = parseInt(movie.id);
+  if (!idFilmeIngressoCom || isNaN(idFilmeIngressoCom)) return null;
 
-  // Validar se o ID do filme existe
-  if (!idFilmeIngressoCom || isNaN(idFilmeIngressoCom)) {
-    console.log(
-      `Ingresso.com - Filme ${movie.title} não possui ID válido, pulando...`
-    );
-    return null;
-  }
+  const dataEstreia = movie.premiereDate?.localDate?.split("T")[0] || null;
+  const classificacao =
+    movie.contentRating === "Verifique a Classificação"
+      ? "Classificação indicativa não disponível"
+      : movie.contentRating;
+  const generos = Array.isArray(movie.genres) ? movie.genres.join(", ") : "";
+  const duracao = movie.duration ? parseFloat(movie.duration) : null;
 
+  // Verificar se já existe
   const checkQuery = `
-    SELECT id, data_estreia, nome
-    FROM filmes 
+    SELECT id FROM filmes 
     WHERE id_filme_ingresso_com = $1 AND id_cinema = $2
-    AND id_filme_ingresso_com IS NOT NULL
   `;
-
-  console.log(
-    `Ingresso.com - Verificando filme ID:${idFilmeIngressoCom} "${movie.title}" no cinema ${idCinema}`
-  );
-
   const { rows: existingRows } = await pool.query(checkQuery, [
     idFilmeIngressoCom,
     idCinema,
   ]);
 
-  if (existingRows.length > 1) {
-    console.error(
-      `Ingresso.com - ERRO: Encontrados ${existingRows.length} registros duplicados para filme ID:${idFilmeIngressoCom} no cinema ${idCinema}`
-    );
-    existingRows.forEach((row, i) => {
-      console.error(`  - Duplicata ${i + 1}: DB ID ${row.id} - "${row.nome}"`);
-    });
-  }
+  const values = [
+    movie.title,
+    movie.synopsis || "",
+    duracao,
+    classificacao,
+    generos,
+    movie.director || movie.directors || "",
+    movie.cast || "",
+    dataEstreia,
+    movie.imageFeatured || "",
+    null, // url_trailer
+  ];
 
-  console.log(
-    `Ingresso.com - Filme ID:${idFilmeIngressoCom} "${movie.title}": ${existingRows.length} encontrados`
-  );
-
-  const dataEstreia = movie.premiereDate?.localDate
-    ? movie.premiereDate.localDate.split("T")[0]
-    : null;
-
-  // Tratar classificação indicativa
-  const classificacao =
-    movie.contentRating === "Verifique a Classificação"
-      ? "Classificação indicativa não disponível"
-      : movie.contentRating;
-
-  const generos = Array.isArray(movie.genres) ? movie.genres.join(", ") : "";
-  const duracao = movie.duration ? parseFloat(movie.duration) : null;
-
-  // Se existem registros (usar o primeiro em caso de duplicatas)
   if (existingRows.length > 0) {
-    const existingMovie = existingRows[0]; // Usar sempre o primeiro registro
-    // Atualiza filme existente usando o ID específico
+    // UPDATE
     const updateQuery = `
       UPDATE filmes SET
         nome = $1, sinopse = $2, duracao = $3, classificacao = $4,
         genero = $5, diretor = $6, elenco_principal = $7, data_estreia = $8,
         url_poster = $9, url_trailer = $10, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $11
+      WHERE id_filme_ingresso_com = $11 AND id_cinema = $12
       RETURNING id, data_estreia;
     `;
 
-    const updateValues = [
-      movie.title,
-      movie.synopsis || "",
-      duracao,
-      classificacao,
-      generos,
-      movie.director || movie.directors || "",
-      movie.cast || "",
-      dataEstreia,
-      movie.imageFeatured || "",
-      null,
-      existingMovie.id, // Usar o ID do registro existente
-    ];
-
-    console.log(
-      `Ingresso.com - Atualizando filme DB_ID:${existingMovie.id} API_ID:${idFilmeIngressoCom} "${movie.title}" no cinema ${idCinema}`
-    );
-
-    return await pool.query(updateQuery, updateValues);
-  } else {
-    // Insere novo filme
-    const insertQuery = `
-      INSERT INTO filmes
-        (nome, sinopse, duracao, classificacao, genero, diretor, elenco_principal, 
-         data_estreia, url_poster, url_trailer, movieIdentifier, codigo_filme, 
-         id_filme_ingresso_com, id_cinema)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-      RETURNING id, data_estreia;
-    `;
-
-    const values = [
-      movie.title,
-      movie.synopsis || "",
-      duracao,
-      classificacao,
-      generos,
-      movie.director || movie.directors || "",
-      movie.cast || "",
-      dataEstreia,
-      movie.imageFeatured || "",
-      null,
-      null,
-      null,
+    return await pool.query(updateQuery, [
+      ...values,
       idFilmeIngressoCom,
       idCinema,
-    ];
+    ]);
+  } else {
+    // INSERT
+    const insertQuery = `
+      INSERT INTO filmes (
+        nome, sinopse, duracao, classificacao, genero, diretor, elenco_principal, 
+        data_estreia, url_poster, url_trailer, movieIdentifier, codigo_filme,
+        id_filme_ingresso_com, id_cinema
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      RETURNING id, data_estreia;
+    `;
 
-    console.log(
-      `Ingresso.com - Inserindo novo filme ID:${idFilmeIngressoCom} "${movie.title}" no cinema ${idCinema}`
-    );
-
-    return await pool.query(insertQuery, values);
+    return await pool.query(insertQuery, [
+      ...values,
+      null, // movieIdentifier
+      null, // codigo_filme
+      idFilmeIngressoCom,
+      idCinema,
+    ]);
   }
 }
 
 async function processMovie(movie: any, idCinema: number) {
-  try {
-    const result = await insertOrUpdateMovie(movie, idCinema);
+  const result = await insertOrUpdateMovie(movie, idCinema);
 
-    if (!result) {
-      console.log(`Filme ${movie.title} não foi processado (ID inválido)`);
-      return null;
-    }
+  if (!result) return null;
 
-    return {
-      id: result.rows[0].id,
-      data_estreia: result.rows[0].data_estreia,
-      idFilmeIngressoCom: movie.id,
-    };
-  } catch (error) {
-    console.error(`Erro ao processar filme ${movie.title}:`, error);
-    throw error;
-  }
+  return {
+    id: result.rows[0].id,
+    data_estreia: result.rows[0].data_estreia,
+    idFilmeIngressoCom: movie.id,
+  };
 }
 
 // ================== PROGRAMMING PROCESSING ==================
@@ -335,140 +279,130 @@ async function syncIngressoCom(
   theaterId: string
 ) {
   try {
-    console.log(
-      `Iniciando sincronização Ingresso.com para cinema ${idCinema}...`
-    );
+    console.log(`🎬 Iniciando sincronização Cinema ${idCinema}...`);
 
     // 1. Buscar filmes e sessões em paralelo
+    console.log(`📡 Buscando dados da API para Cinema ${idCinema}...`);
     const [filmes, sessionsData] = await Promise.all([
       fetchAllMovies(cityId),
       fetchSessions(cityId, theaterId),
     ]);
-
     console.log(
-      `Encontrados ${filmes.length} filmes para processar no cinema ${idCinema}`
+      `✅ API Data: ${filmes.length} filmes, ${sessionsData.length} dias de sessões`
     );
 
-    // Verificar se há filmes duplicados na resposta da API
+    // 2. Remover duplicados da API (manter apenas filmes únicos)
+    console.log(`🔄 Removendo duplicatas da API...`);
     const filmesUnicos = new Map();
-    const filmesDuplicados = [];
-
     filmes.forEach((filme) => {
       const id = parseInt(filme.id);
-      if (filmesUnicos.has(id)) {
-        filmesDuplicados.push(`ID: ${id} - ${filme.title}`);
-      } else {
+      if (!filmesUnicos.has(id)) {
         filmesUnicos.set(id, filme);
       }
     });
-
-    if (filmesDuplicados.length > 0) {
-      console.warn(
-        `Ingresso.com - ATENÇÃO: ${filmesDuplicados.length} filmes duplicados detectados na API:`
-      );
-      filmesDuplicados.forEach((filme) => console.warn(`  - ${filme}`));
-    }
-
     console.log(
-      `Processando ${filmesUnicos.size} filmes únicos de ${filmes.length} total`
+      `✅ Deduplicação: ${filmesUnicos.size} filmes únicos de ${filmes.length} total`
     );
 
-    // 2. Processar apenas filmes únicos em paralelo
+    // 3. Processar filmes únicos em paralelo
     const filmesArray = Array.from(filmesUnicos.values());
-    const filmePromises = filmesArray.map((filme) =>
-      processMovie(filme, idCinema)
-    );
-    const filmesProcessados = await Promise.all(filmePromises);
-
-    // 3. Filtrar filmes válidos e criar mapa
-    const filmesValidos = filmesProcessados.filter((filme, index) => {
-      if (filme === null) {
-        console.log(
-          `Filme ${filmesArray[index].title} foi ignorado (ID inválido)`
-        );
-        return false;
-      }
-      return true;
-    });
-
     console.log(
-      `${filmesValidos.length} filmes válidos processados de ${filmesArray.length} filmes únicos`
+      `💾 Processando ${filmesArray.length} filmes no banco de dados...`
+    );
+    const filmesProcessados = await Promise.all(
+      filmesArray.map((filme) => processMovie(filme, idCinema))
+    );
+    const filmesValidosCount = filmesProcessados.filter(Boolean).length;
+    console.log(
+      `✅ Filmes salvos: ${filmesValidosCount}/${filmesArray.length} (${
+        filmesArray.length - filmesValidosCount
+      } ignorados)`
     );
 
+    // 4. Criar mapa de filmes válidos
     const filmeIdMap = new Map<string, { id: number; data_estreia: string }>();
-    filmesValidos.forEach((filmeProc, index) => {
-      const originalIndex = filmesProcessados.findIndex((f) => f === filmeProc);
-      const filmeOriginal = filmesArray[originalIndex];
-      filmeIdMap.set(filmeOriginal.id, {
-        id: filmeProc.id,
-        data_estreia: filmeProc.data_estreia
-          ? filmeProc.data_estreia.toISOString().split("T")[0]
-          : dayjs().format("YYYY-MM-DD"),
-      });
+    filmesProcessados.forEach((filmeProc, index) => {
+      if (filmeProc) {
+        const filmeOriginal = filmesArray[index];
+        filmeIdMap.set(filmeOriginal.id, {
+          id: filmeProc.id,
+          data_estreia: filmeProc.data_estreia
+            ? filmeProc.data_estreia.toISOString().split("T")[0]
+            : dayjs().format("YYYY-MM-DD"),
+        });
+      }
     });
 
-    // 4. Agrupar sessões por filme
+    // 5. Agrupar sessões por filme
+    console.log(`📅 Processando sessões de programação...`);
     const sessoesPorFilme: Record<string, any[]> = {};
 
     for (const day of sessionsData) {
       const dataFormatada = dayjs(day.date).format("DD/MM/YYYY");
 
       for (const movie of day.movies) {
-        const movieId = movie.id;
+        if (!filmeIdMap.has(movie.id)) continue;
 
-        if (!filmeIdMap.has(movieId)) {
-          continue;
-        }
-
-        if (!sessoesPorFilme[movieId]) {
-          sessoesPorFilme[movieId] = [];
+        if (!sessoesPorFilme[movie.id]) {
+          sessoesPorFilme[movie.id] = [];
         }
 
         for (const room of movie.rooms) {
           for (const session of room.sessions) {
-            const hora = session.time;
             const tipos =
               session.types
                 ?.map((t: any) => t.alias)
                 .filter((alias: string) => alias && alias !== "2D")
                 .join("/") || "";
-            const tipoFormatado = tipos ? `(${tipos})` : "";
 
-            sessoesPorFilme[movieId].push({
+            sessoesPorFilme[movie.id].push({
               data: dataFormatada,
-              hora: hora,
-              tipo: tipoFormatado,
+              hora: session.time,
+              tipo: tipos ? `(${tipos})` : "",
             });
           }
         }
       }
     }
 
-    // 5. Processar programação em paralelo
-    const progPromises = Object.entries(sessoesPorFilme)
-      .filter(([_, sessoes]) => sessoes.length > 0)
-      .map(([movieId, sessoes]) => {
-        const filmeInfo = filmeIdMap.get(movieId);
-        if (filmeInfo) {
-          return processProgramacao(movieId, sessoes, filmeInfo, idCinema);
-        }
-        return Promise.resolve();
-      });
-
-    await Promise.all(progPromises);
-
+    const totalSessoes = Object.values(sessoesPorFilme).reduce(
+      (acc, sessoes) => acc + sessoes.length,
+      0
+    );
     console.log(
-      `Sincronização Ingresso.com concluída para cinema ${idCinema}!`
+      `✅ Sessões agrupadas: ${totalSessoes} sessões para ${
+        Object.keys(sessoesPorFilme).length
+      } filmes`
+    );
+
+    // 6. Processar programação em paralelo
+    console.log(`🗓️ Salvando programação no banco...`);
+    await Promise.all(
+      Object.entries(sessoesPorFilme)
+        .filter(([_, sessoes]) => sessoes.length > 0)
+        .map(([movieId, sessoes]) => {
+          const filmeInfo = filmeIdMap.get(movieId);
+          return filmeInfo
+            ? processProgramacao(movieId, sessoes, filmeInfo, idCinema)
+            : null;
+        })
+        .filter(Boolean)
+    );
+
+    console.log(`✅ Programação salva com sucesso!`);
+    console.log(
+      `🎉 CONCLUÍDO - Cinema ${idCinema}: ${filmeIdMap.size} filmes sincronizados`
     );
   } catch (error) {
-    console.error(`Erro na sincronização do cinema ${idCinema}:`, error);
+    console.error(`❌ ERRO - Cinema ${idCinema}:`, error);
   }
 }
 
 // ================== EXECUÇÃO ==================
 async function main() {
   try {
-    console.log("Iniciando sincronização de filmes Ingresso.com...");
+    console.log("🚀 INICIANDO SINCRONIZAÇÃO INGRESSO.COM");
+    console.log("==================================================");
 
     const cinemas = [
       { id: 17, nome: "Cine Cambuí", cityId: "460", theaterId: "1467" },
@@ -537,25 +471,26 @@ async function main() {
       },
     ];
 
-    // Processar todos os cinemas em paralelo com Promise.all
-    const cinemaPromises = cinemas.map((cinema) => {
-      console.log(`Processando ${cinema.nome} (ID: ${cinema.id})`);
-      return syncIngressoCom(cinema.id, cinema.cityId, cinema.theaterId)
-        .then(() => {
-          console.log(`✓ Concluído: ${cinema.nome}`);
-        })
-        .catch((error) => {
-          console.error(`✗ Erro em ${cinema.nome}:`, error.message);
-        });
-    });
+    console.log(`📊 Total de cinemas: ${cinemas.length}`);
+    console.log("🔄 Processando todos os cinemas em paralelo...\n");
 
-    await Promise.all(cinemaPromises);
+    const startTime = Date.now();
 
-    console.log("\n=== SINCRONIZAÇÃO CONCLUÍDA ===");
-    console.log(`Total de cinemas processados: ${cinemas.length}`);
-    console.log("Todos os cinemas foram processados em paralelo!");
+    await Promise.all(
+      cinemas.map((cinema) =>
+        syncIngressoCom(cinema.id, cinema.cityId, cinema.theaterId)
+      )
+    );
+
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(2);
+
+    console.log("\n==================================================");
+    console.log("🎉 SINCRONIZAÇÃO CONCLUÍDA COM SUCESSO!");
+    console.log(`⏱️ Tempo total: ${duration}s`);
+    console.log(`🏪 Cinemas processados: ${cinemas.length}`);
   } catch (error) {
-    console.error("Erro durante a sincronização:", error);
+    console.error("❌ ERRO GERAL durante a sincronização:", error);
     process.exit(1);
   }
 }
