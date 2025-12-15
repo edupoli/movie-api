@@ -289,6 +289,25 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
           } else {
             results = await getMovieDetails(queryParams);
           }
+
+          // Lógica de Fallback: Se não encontrou resultados para a data específica,
+          // tenta buscar sem filtro de data (trazendo toda a programação futura)
+          if (
+            results.length === 0 &&
+            (processedDayName || processedTargetDate)
+          ) {
+            const fallbackParams: QueryParams = {
+              ...queryParams,
+              dayName: null,
+              targetDate: null,
+            };
+            if (intent === "movie_showtimes") {
+              results = await getMovieShowtimes(fallbackParams);
+            } else {
+              results = await getMovieDetails(fallbackParams);
+            }
+          }
+
           if (results.length > 0) {
             allResults = allResults.concat(results);
             movieNames.push(movie.name);
