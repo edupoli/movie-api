@@ -372,6 +372,28 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
             }\nComprar ingresso: ${cinema.url_comprar_ingresso || "-"}`,
           }))
         : formatMovieData(allResults, intent);
+
+    // Se for busca de filmes, anexa informações de preços de ingressos se houver
+    if (intent === "movie_showtimes" || intent === "movie_details") {
+      const ticketQueryParams: QueryParams = {
+        cinemaId,
+        movieId: null,
+        dayName: processedDayName,
+        targetDate: processedTargetDate,
+        status: status,
+      };
+      const ticketResults = await getTicketPrices(ticketQueryParams);
+      if (ticketResults.length > 0) {
+        const formattedTickets = formatTicketPrices(ticketResults);
+        if (formattedTickets.length > 0 && formattedTickets[0].output) {
+          // Adiciona aos resultados existentes
+          if (formattedResults.length > 0) {
+            formattedResults[0].output += `\n\nvalores_de_ingressos: ${formattedTickets[0].output}`;
+          }
+        }
+      }
+    }
+
     return res.json(formattedResults);
   } catch (error) {
     console.error("Error:", error);
