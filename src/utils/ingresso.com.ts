@@ -313,7 +313,7 @@ async function syncIngressoCom(
               session.types
                 ?.map((t: any) => t.alias)
                 .filter((alias: string) => alias && alias !== "2D")
-                .join("/") || "";
+                .join(" ") || "";
             sessoesPorFilme[movie.id].push({
               data: dataFormatada,
               hora: session.time,

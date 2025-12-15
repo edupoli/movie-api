@@ -346,7 +346,7 @@ async function syncVelox() {
       sessoesPorFilme[movieIdentifier].push({
         data: d.format("DD/MM/YYYY"),
         hora: d.format("HH:mm"),
-        tipo: `(${ev.generalFeatures})`,
+        tipo: `(${ev.generalFeatures?.replace(/,/g, " ") || ""})`,
       });
     }
 
