@@ -1,20 +1,20 @@
-import { Pool, PoolClient } from "pg";
-import dayjs from "dayjs";
-import isoWeek from "dayjs/plugin/isoWeek";
-import customParseFormat from "dayjs/plugin/customParseFormat";
-import fetch from "node-fetch";
+import { Pool, PoolClient } from 'pg';
+import dayjs from 'dayjs';
+import isoWeek from 'dayjs/plugin/isoWeek';
+import customParseFormat from 'dayjs/plugin/customParseFormat';
+import fetch from 'node-fetch';
 
 dayjs.extend(isoWeek);
 dayjs.extend(customParseFormat);
 
 // Helpers copiados do multicine
 function getCineSemana(dateStr: string) {
-  const d = dayjs(dateStr, "YYYY-MM-DD");
+  const d = dayjs(dateStr, 'YYYY-MM-DD');
   const semanaInicio = d.day(4).isAfter(d) ? d.day(-3) : d.day(4);
-  const semanaFim = semanaInicio.add(6, "day");
+  const semanaFim = semanaInicio.add(6, 'day');
   return {
-    semanaInicio: semanaInicio.format("YYYY-MM-DD"),
-    semanaFim: semanaFim.format("YYYY-MM-DD"),
+    semanaInicio: semanaInicio.format('YYYY-MM-DD'),
+    semanaFim: semanaFim.format('YYYY-MM-DD'),
   };
 }
 
@@ -22,7 +22,7 @@ function groupSessionsByCineWeek(sessoes: any[]) {
   const groups: Record<string, any[]> = {};
 
   sessoes.forEach((sessao) => {
-    const dateYYYYMMDD = dayjs(sessao.data, "DD/MM/YYYY").format("YYYY-MM-DD");
+    const dateYYYYMMDD = dayjs(sessao.data, 'DD/MM/YYYY').format('YYYY-MM-DD');
     const { semanaInicio } = getCineSemana(dateYYYYMMDD);
     if (!groups[semanaInicio]) {
       groups[semanaInicio] = [];
@@ -33,7 +33,11 @@ function groupSessionsByCineWeek(sessoes: any[]) {
   return groups;
 }
 
-function mapSessionsByWeekDays(sessoes: any[]) {
+function mapSessionsByWeekDays(
+  sessoes: any[],
+  semanaInicio: string,
+  semanaFim: string,
+) {
   const dias: Record<string, Record<string, string[]>> = {
     segunda: {},
     terca: {},
@@ -44,17 +48,17 @@ function mapSessionsByWeekDays(sessoes: any[]) {
     domingo: {},
   };
   sessoes.forEach((s) => {
-    const data = dayjs(s.data, "DD/MM/YYYY");
+    const data = dayjs(s.data, 'DD/MM/YYYY');
     const horaFormatada = s.hora;
     const tipo = s.tipo;
     const diaSemana = [
-      "domingo",
-      "segunda",
-      "terca",
-      "quarta",
-      "quinta",
-      "sexta",
-      "sabado",
+      'domingo',
+      'segunda',
+      'terca',
+      'quarta',
+      'quinta',
+      'sexta',
+      'sabado',
     ][data.day()];
     if (!dias[diaSemana][s.data]) {
       dias[diaSemana][s.data] = [];
@@ -62,33 +66,64 @@ function mapSessionsByWeekDays(sessoes: any[]) {
     dias[diaSemana][s.data].push(`${horaFormatada} ${tipo}`);
   });
   const resultado: Record<string, string> = {};
+  const inicioDayjs = dayjs(semanaInicio, 'YYYY-MM-DD');
+  const fimDayjs = dayjs(semanaFim, 'YYYY-MM-DD');
+
   for (const [dia, datas] of Object.entries(dias)) {
     const partes: string[] = [];
     for (const [data, horarios] of Object.entries(datas)) {
       if (horarios.length > 0) {
-        partes.push(`${data} ${horarios.join(", ")}`);
+        partes.push(`${data} ${horarios.join(', ')}`);
       }
     }
-    resultado[dia] = partes.length > 0 ? partes.join(", ") : "(Sem Sessao)";
+
+    // Se não tem sessões para esse dia, gera a data correspondente + (Sem Sessao)
+    if (partes.length === 0) {
+      const diasSemanaMap = {
+        domingo: 0,
+        segunda: 1,
+        terca: 2,
+        quarta: 3,
+        quinta: 4,
+        sexta: 5,
+        sabado: 6,
+      };
+      const targetDayOfWeek = diasSemanaMap[dia];
+
+      let currentDate = inicioDayjs;
+      while (
+        currentDate.isBefore(fimDayjs) ||
+        currentDate.isSame(fimDayjs, 'day')
+      ) {
+        if (currentDate.day() === targetDayOfWeek) {
+          const dataFormatada = currentDate.format('DD/MM/YYYY');
+          partes.push(`${dataFormatada} (Sem Sessao)`);
+          break;
+        }
+        currentDate = currentDate.add(1, 'day');
+      }
+    }
+
+    resultado[dia] = partes.length > 0 ? partes.join(', ') : '(Sem Sessao)';
   }
   return resultado;
 }
 
 const pool = new Pool({
-  host: process.env.DB_HOST || "5.161.113.232",
-  database: process.env.DB_NAME || "cinemas",
-  user: process.env.DB_USER || "mooviai",
-  password: process.env.DB_PASSWORD || "ServerMoovia123",
+  host: process.env.DB_HOST || '5.161.113.232',
+  database: process.env.DB_NAME || 'cinemas',
+  user: process.env.DB_USER || 'mooviai',
+  password: process.env.DB_PASSWORD || 'ServerMoovia123',
   port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : 30500,
 });
 
 async function fetchGraphQL(query: string, variables?: any): Promise<any> {
-  const response = await fetch("https://partnerapi.veloxtickets.com/graphql/", {
-    method: "POST",
+  const response = await fetch('https://partnerapi.veloxtickets.com/graphql/', {
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       Authorization:
-        "Basic " + Buffer.from("cine14bis:Rot1WUhaab2Q").toString("base64"),
+        'Basic ' + Buffer.from('cine14bis:Rot1WUhaab2Q').toString('base64'),
     },
     body: JSON.stringify({
       query,
@@ -111,12 +146,12 @@ function parseDurationToMinutes(duration: string): number | null {
 }
 
 function formatClassificacao(typicalAgeRange: string | number): string {
-  if (!typicalAgeRange) return "LIVRE";
+  if (!typicalAgeRange) return 'LIVRE';
 
   const idade = parseInt(String(typicalAgeRange));
 
   if (idade <= 0 || isNaN(idade)) {
-    return "LIVRE";
+    return 'LIVRE';
   }
 
   return `${idade} ANOS`;
@@ -150,7 +185,7 @@ async function fetchAllMovies() {
 async function upsertMovies(
   validMovies: { filme: any; details: any }[],
   idCinema: number,
-  client: PoolClient
+  client: PoolClient,
 ) {
   if (validMovies.length === 0) return new Map();
 
@@ -166,19 +201,19 @@ async function upsertMovies(
 
     const movieData = [
       details.name,
-      details.abstract || "",
+      details.abstract || '',
       parseDurationToMinutes(details.duration),
       formatClassificacao(details.typicalAgeRange),
       details.genre,
-      details.director?.map((d: any) => d.name).join(", ") || null,
-      dayjs(filme.releaseDate).format("YYYY-MM-DD"),
+      details.director?.map((d: any) => d.name).join(', ') || null,
+      dayjs(filme.releaseDate).format('YYYY-MM-DD'),
       filme.url || details.image?.[0]?.contentUrl,
       filme.trailerURL || details.trailer?.[0]?.contentUrl || null,
       movieIdentifier,
       idCinema,
     ];
 
-    const placeholders = movieData.map(() => `$${paramIndex++}`).join(", ");
+    const placeholders = movieData.map(() => `$${paramIndex++}`).join(', ');
     values.push(`(${placeholders})`);
     params.push(...movieData);
   });
@@ -190,7 +225,7 @@ async function upsertMovies(
       nome, sinopse, duracao, classificacao, genero, diretor, data_estreia, 
       url_poster, url_trailer, movieIdentifier, id_cinema
     )
-    VALUES ${values.join(", ")}
+    VALUES ${values.join(', ')}
     ON CONFLICT (movieIdentifier, id_cinema) DO UPDATE SET
       nome = EXCLUDED.nome,
       sinopse = EXCLUDED.sinopse,
@@ -221,7 +256,7 @@ async function upsertProgramacao(
   sessoesPorFilme: Record<string, any[]>,
   filmeIdMap: Map<string, any>,
   idCinema: number,
-  client: PoolClient
+  client: PoolClient,
 ) {
   const values: string[] = [];
   const params: any[] = [];
@@ -235,14 +270,18 @@ async function upsertProgramacao(
     const sessionsByWeek = groupSessionsByCineWeek(sessoes);
 
     Object.entries(sessionsByWeek).forEach(([semanaInicio, weekSessions]) => {
-      const semanaInicioDate = dayjs(semanaInicio, "YYYY-MM-DD");
-      const semanaFim = semanaInicioDate.add(6, "day").format("YYYY-MM-DD");
-      const sessoesSemana = mapSessionsByWeekDays(weekSessions);
+      const semanaInicioDate = dayjs(semanaInicio, 'YYYY-MM-DD');
+      const semanaFim = semanaInicioDate.add(6, 'day').format('YYYY-MM-DD');
+      const sessoesSemana = mapSessionsByWeekDays(
+        weekSessions,
+        semanaInicio,
+        semanaFim,
+      );
 
       const progData = [
         idFilme,
         idCinema,
-        "em cartaz",
+        'em cartaz',
         data_estreia,
         semanaInicio,
         semanaFim,
@@ -255,7 +294,7 @@ async function upsertProgramacao(
         sessoesSemana.domingo,
       ];
 
-      const placeholders = progData.map(() => `$${paramIndex++}`).join(", ");
+      const placeholders = progData.map(() => `$${paramIndex++}`).join(', ');
       values.push(`(${placeholders})`);
       params.push(...progData);
     });
@@ -268,7 +307,7 @@ async function upsertProgramacao(
       id_filme, id_cinema, status, data_estreia, semana_inicio, semana_fim,
       segunda, terca, quarta, quinta, sexta, sabado, domingo
     )
-    VALUES ${values.join(", ")}
+    VALUES ${values.join(', ')}
     ON CONFLICT (id_filme, id_cinema, semana_inicio) DO UPDATE SET
       status = EXCLUDED.status,
       data_estreia = EXCLUDED.data_estreia,
@@ -289,10 +328,10 @@ async function upsertProgramacao(
 async function syncVelox() {
   let client: PoolClient | null = null;
   try {
-    console.log("Iniciando sincronização Velox...");
+    console.log('Iniciando sincronização Velox...');
 
     client = await pool.connect();
-    await client.query("BEGIN");
+    await client.query('BEGIN');
 
     const idCinema = 10;
 
@@ -320,7 +359,7 @@ async function syncVelox() {
       }`).then((detailsResp) => ({
         filme,
         details: detailsResp.data.movies?.[0],
-      }))
+      })),
     );
 
     const movieDetailsResults = await Promise.all(movieDetailsPromises);
@@ -344,9 +383,9 @@ async function syncVelox() {
       }
 
       sessoesPorFilme[movieIdentifier].push({
-        data: d.format("DD/MM/YYYY"),
-        hora: d.format("HH:mm"),
-        tipo: `(${ev.generalFeatures?.replace(/,/g, " ") || ""})`,
+        data: d.format('DD/MM/YYYY'),
+        hora: d.format('HH:mm'),
+        tipo: `(${ev.generalFeatures?.replace(/,/g, ' ') || ''})`,
       });
     }
 
@@ -354,12 +393,12 @@ async function syncVelox() {
 
     await upsertProgramacao(sessoesPorFilme, filmeIdMap, idCinema, client);
 
-    await client.query("COMMIT");
+    await client.query('COMMIT');
 
-    console.log("Sincronização Velox concluída!");
+    console.log('Sincronização Velox concluída!');
   } catch (error) {
-    if (client) await client.query("ROLLBACK");
-    console.error("Erro na sincronização Velox:", error);
+    if (client) await client.query('ROLLBACK');
+    console.error('Erro na sincronização Velox:', error);
   } finally {
     if (client) client.release();
   }
