@@ -100,25 +100,26 @@ function formatMovieData(
           data_estreia: formatDate(movie.data_estreia),
         };
 
-        // Mapear todos os dias e filtrar apenas os que são >= hoje
+        // Mapear todos os dias da semana
         const dayEntries = daysWeek
           .map((dayName) => {
             const dayValue = movie[dayName] || '';
             const date = extractDateFromDayString(dayValue);
-            console.log(
-              `DEBUG formatMovieData - ${dayName}: value="${dayValue}", date=${date}, today=${today}`,
-            );
+            const isSemSessao = dayValue.includes('(Sem Sessao)');
             return {
               dayName,
               date,
               value: dayValue,
+              isSemSessao,
             };
           })
           .filter((entry) => {
-            // Incluir dia se tem data e é >= hoje
-            const include = entry.date && entry.date >= today;
-            console.log(`DEBUG filter - ${entry.dayName}: include=${include}`);
-            return include;
+            // Se tem data e é "Sem Sessao", sempre incluir (mesmo que já passou)
+            if (entry.isSemSessao && entry.date) {
+              return true;
+            }
+            // Se tem sessões reais, incluir apenas se >= hoje
+            return entry.date && entry.date >= today;
           })
           .sort((a, b) => {
             if (!a.date || !b.date) return 0;
