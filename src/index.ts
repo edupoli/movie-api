@@ -16,6 +16,7 @@ dotenv.config();
 import { syncVelox } from './utils/velox-api';
 import { syncVendaBem } from './utils/venda-bem-api';
 import { syncIngressoComAll } from './utils/ingresso.com';
+import { startSyncJobs } from './jobs/syncJobs';
 
 const app = express();
 app.use(express.json());
@@ -472,4 +473,7 @@ process.on('uncaughtException', (error) => {
 
 app.listen(process.env.PORT || 8000, () => {
   console.log(`Server running on port ${process.env.PORT || 8000}`);
+
+  // Iniciar jobs de sincronização automática
+  startSyncJobs();
 });
