@@ -1,16 +1,16 @@
-import * as express from "express";
-import { Request, Response } from "express";
-import { query } from "./db";
-import { classifyIntent } from "./nlpOpenAI";
-import { findMovieIdByName } from "./fuzzyMatch";
-import { getDayDate } from "./utils/getdaydate";
+import * as express from 'express';
+import { Request, Response } from 'express';
+import { query } from './db';
+import { classifyIntent } from './nlpOpenAI';
+import { findMovieIdByName } from './fuzzyMatch';
+import { getDayDate } from './utils/getdaydate';
 import {
   getMovieDetails,
   getMovieShowtimes,
   getTicketPrices,
   getCinemaInfo,
-} from "./queries";
-import * as dotenv from "dotenv";
+} from './queries';
+import * as dotenv from 'dotenv';
 dotenv.config();
 
 const app = express();
@@ -31,8 +31,8 @@ interface QueryParams {
 
 function formatDate(date: Date | null): string {
   if (!date) return null;
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
   const year = date.getFullYear();
   return `${day}/${month}/${year}`;
 }
@@ -41,23 +41,23 @@ function extractDateFromDayString(dayString: string): Date | null {
   if (!dayString) return null;
   const dateMatch = dayString.match(/\d{2}\/\d{2}\/\d{4}/);
   if (!dateMatch) return null;
-  const [day, month, year] = dateMatch[0].split("/").map(Number);
+  const [day, month, year] = dateMatch[0].split('/').map(Number);
   return new Date(year, month - 1, day);
 }
 
 function formatMovieData(results: any[]): { output: string }[] {
   const daysWeek = [
-    "segunda",
-    "terca",
-    "quarta",
-    "quinta",
-    "sexta",
-    "sabado",
-    "domingo",
+    'segunda',
+    'terca',
+    'quarta',
+    'quinta',
+    'sexta',
+    'sabado',
+    'domingo',
   ];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  let output = "";
+  let output = '';
 
   // ADIÇÃO: Ordenar os resultados por semana_inicio (mais antiga primeiro)
   const sortedResults = [...results].sort((a, b) => {
@@ -82,8 +82,8 @@ function formatMovieData(results: any[]): { output: string }[] {
       const dayEntries = daysWeek
         .map((dayName) => ({
           dayName,
-          date: extractDateFromDayString(movie[dayName] || ""),
-          value: movie[dayName] || "",
+          date: extractDateFromDayString(movie[dayName] || ''),
+          value: movie[dayName] || '',
         }))
         .filter((entry) => entry.value && entry.date && entry.date >= today)
         .sort((a, b) => {
@@ -101,9 +101,9 @@ function formatMovieData(results: any[]): { output: string }[] {
     } else {
       Object.entries(movie).forEach(([key, value]) => {
         if (
-          key === "semana_inicio" ||
-          key === "semana_fim" ||
-          key === "data_estreia"
+          key === 'semana_inicio' ||
+          key === 'semana_fim' ||
+          key === 'data_estreia'
         ) {
           value = formatDate(value as Date);
         }
@@ -112,7 +112,7 @@ function formatMovieData(results: any[]): { output: string }[] {
     }
 
     if (index < sortedResults.length - 1) {
-      output += "\n\n";
+      output += '\n\n';
     }
   });
 
@@ -121,30 +121,30 @@ function formatMovieData(results: any[]): { output: string }[] {
 
 function formatTicketPrices(results: any[]): { output: string }[] {
   const daysWeek = [
-    "segunda",
-    "terca",
-    "quarta",
-    "quinta",
-    "sexta",
-    "sabado",
-    "domingo",
+    'segunda',
+    'terca',
+    'quarta',
+    'quinta',
+    'sexta',
+    'sabado',
+    'domingo',
   ];
-  let output = "";
+  let output = '';
 
   results.forEach((ticket, index) => {
     const priceFields = [
-      "inteira_2d",
-      "meia_2d",
-      "inteira_2d_desconto",
-      "inteira_3d",
-      "meia_3d",
-      "inteira_3d_desconto",
-      "inteira_vip_2d",
-      "meia_vip_2d",
-      "inteira_vip_2d_desconto",
-      "inteira_vip_3d",
-      "meia_vip_3d",
-      "inteira_vip_3d_desconto",
+      'inteira_2d',
+      'meia_2d',
+      'inteira_2d_desconto',
+      'inteira_3d',
+      'meia_3d',
+      'inteira_3d_desconto',
+      'inteira_vip_2d',
+      'meia_vip_2d',
+      'inteira_vip_2d_desconto',
+      'inteira_vip_3d',
+      'meia_vip_3d',
+      'inteira_vip_3d_desconto',
     ];
 
     // Add fixed fields
@@ -174,27 +174,27 @@ function formatTicketPrices(results: any[]): { output: string }[] {
     });
 
     if (index < results.length - 1) {
-      output += "\n\n";
+      output += '\n\n';
     }
   });
 
   return [{ output: output.trim() }];
 }
 
-app.post("/search", async (req: Request, res: Response): Promise<any> => {
+app.post('/search', async (req: Request, res: Response): Promise<any> => {
   try {
     const { mensagem, cinema }: SearchPayload = req.body;
 
     // Validate cinema
     const cinemaData = await query(
-      "SELECT id, url_conferir_horarios FROM cinemas WHERE nome = $1",
-      [cinema]
+      'SELECT id, url_conferir_horarios FROM cinemas WHERE nome = $1',
+      [cinema],
     );
     if (!cinemaData.length) {
       return res.status(400).json([
         {
           output:
-            "Não entendi de qual cinema da nossa rede você está procurando, pode me dizer por favor?”",
+            'Não entendi de qual cinema da nossa rede você está procurando, pode me dizer por favor?”',
         },
       ]);
     }
@@ -217,7 +217,7 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
 
     // Handle movie if provided
     let movieId: number | null = null;
-    let movieName: string = "";
+    let movieName: string = '';
     if (movieFromQuery) {
       const movie = await findMovieIdByName(movieFromQuery);
       if (!movie) {
@@ -232,7 +232,7 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
     }
 
     const { targetDate, dayName } = getDayDate(time);
-    console.log("Target Date:", targetDate, "Day Name:", dayName);
+    console.log('Target Date:', targetDate, 'Day Name:', dayName);
     // Query parameters
     const queryParams: QueryParams = {
       cinemaId,
@@ -241,19 +241,19 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
       targetDate,
       status: status,
     };
-    console.log("Query Params:", queryParams);
+    console.log('Query Params:', queryParams);
     let results: any[] = [];
     switch (intent) {
-      case "movie_showtimes":
+      case 'movie_showtimes':
         results = await getMovieShowtimes(queryParams);
         break;
-      case "movie_details":
+      case 'movie_details':
         results = await getMovieDetails(queryParams);
         break;
-      case "ticket_prices":
+      case 'ticket_prices':
         results = await getTicketPrices(queryParams);
         break;
-      case "cinema_info":
+      case 'cinema_info':
         results = await getCinemaInfo(queryParams);
         break;
       default:
@@ -264,43 +264,66 @@ app.post("/search", async (req: Request, res: Response): Promise<any> => {
         ]);
     }
 
-    console.log("Results:", results); // Debug log to inspect data
+    console.log('Results:', results); // Debug log to inspect data
+
+    // Fallback: se não encontrou resultados para um dia específico de um filme,
+    // tenta buscar a programação completa da semana
+    if (
+      !results.length &&
+      intent === 'movie_showtimes' &&
+      movieId &&
+      dayName !== null
+    ) {
+      console.log(
+        'Tentando fallback: buscando programação completa do filme...',
+      );
+      const fallbackParams: QueryParams = {
+        cinemaId,
+        movieId,
+        dayName: null, // Busca a semana completa
+        targetDate,
+        status: status,
+      };
+      results = await getMovieShowtimes(fallbackParams);
+      console.log('Results do fallback:', results);
+    }
+
     if (!results.length) {
       return res.json([
         {
           output: `Não achei nada sobre ${
-            movieName ? `o filme "${movieName}"` : "essa solicitação"
+            movieName ? `o filme "${movieName}"` : 'essa solicitação'
           }. Dá uma olhada na programação do site: ${urlConferirHorarios}`,
         },
       ]);
     }
     const formattedResults =
-      intent === "ticket_prices"
+      intent === 'ticket_prices'
         ? formatTicketPrices(results)
-        : intent === "cinema_info"
-        ? results.map((cinema) => ({
-            output: `Informações do cinema:\nNome: ${cinema?.nome}\nEndereço: ${
-              cinema?.endereco || "Não cadastrado"
-            }\nTelefone: ${cinema?.telefone || "Não cadastrado"}\nSite: ${
-              cinema.url_conferir_horarios || "-"
-            }\nComprar ingresso: ${cinema.url_comprar_ingresso || "-"}`,
-          }))
-        : formatMovieData(results);
+        : intent === 'cinema_info'
+          ? results.map((cinema) => ({
+              output: `Informações do cinema:\nNome: ${cinema?.nome}\nEndereço: ${
+                cinema?.endereco || 'Não cadastrado'
+              }\nTelefone: ${cinema?.telefone || 'Não cadastrado'}\nSite: ${
+                cinema.url_conferir_horarios || '-'
+              }\nComprar ingresso: ${cinema.url_comprar_ingresso || '-'}`,
+            }))
+          : formatMovieData(results);
     return res.json(formattedResults);
   } catch (error) {
-    console.error("Error:", error);
+    console.error('Error:', error);
     res
       .status(500)
-      .json([{ output: "Ocorreu um erro ao processar a consulta." }]);
+      .json([{ output: 'Ocorreu um erro ao processar a consulta.' }]);
   }
 });
 
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-process.on("uncaughtException", (error) => {
-  console.error("Uncaught Exception:", error);
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
 });
 
 app.listen(process.env.PORT || 8000, () => {
