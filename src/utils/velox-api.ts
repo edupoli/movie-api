@@ -7,6 +7,53 @@ import fetch from 'node-fetch';
 dayjs.extend(isoWeek);
 dayjs.extend(customParseFormat);
 
+// Configuração de cinemas com credenciais e identificadores
+interface VeloxCinemaConfig {
+  idCinema: number;
+  username: string;
+  password: string;
+  cityIdentifier: string;
+  placeIdentifier: string;
+}
+
+const VELOX_CINEMAS: VeloxCinemaConfig[] = [
+  {
+    idCinema: 10,
+    username: 'cine14bis',
+    password: 'Rot1WUhaab2Q',
+    cityIdentifier: 'GUAXUPE',
+    placeIdentifier: 'GXP',
+  },
+  {
+    idCinema: 62,
+    username: 'circuitocinemas',
+    password: 'oIsTaTeNTIFF',
+    cityIdentifier: 'CINEMA_62', // TODO: Ajustar identificador correto
+    placeIdentifier: 'PLACE_62', // TODO: Ajustar identificador correto
+  },
+  {
+    idCinema: 63,
+    username: 'circuitocinemas',
+    password: 'oIsTaTeNTIFF',
+    cityIdentifier: 'CINEMA_63', // TODO: Ajustar identificador correto
+    placeIdentifier: 'PLACE_63', // TODO: Ajustar identificador correto
+  },
+  {
+    idCinema: 64,
+    username: 'circuitocinemas',
+    password: 'oIsTaTeNTIFF',
+    cityIdentifier: 'CINEMA_64', // TODO: Ajustar identificador correto
+    placeIdentifier: 'PLACE_64', // TODO: Ajustar identificador correto
+  },
+  {
+    idCinema: 65,
+    username: 'circuitocinemas',
+    password: 'oIsTaTeNTIFF',
+    cityIdentifier: 'CINEMA_65', // TODO: Ajustar identificador correto
+    placeIdentifier: 'PLACE_65', // TODO: Ajustar identificador correto
+  },
+];
+
 // Helpers copiados do multicine
 function getCineSemana(dateStr: string) {
   const d = dayjs(dateStr, 'YYYY-MM-DD');
@@ -117,13 +164,18 @@ const pool = new Pool({
   port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : 30500,
 });
 
-async function fetchGraphQL(query: string, variables?: any): Promise<any> {
+async function fetchGraphQL(
+  query: string,
+  username: string,
+  password: string,
+  variables?: any,
+): Promise<any> {
+  const credentials = Buffer.from(`${username}:${password}`).toString('base64');
   const response = await fetch('https://partnerapi.veloxtickets.com/graphql/', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization:
-        'Basic ' + Buffer.from('cine14bis:Rot1WUhaab2Q').toString('base64'),
+      Authorization: `Basic ${credentials}`,
     },
     body: JSON.stringify({
       query,
@@ -157,24 +209,24 @@ function formatClassificacao(typicalAgeRange: string | number): string {
   return `${idade} ANOS`;
 }
 
-async function fetchAllMovies() {
+async function fetchAllMovies(config: VeloxCinemaConfig): Promise<any[]> {
   const scheduledQuery = `{
-    homeScheduledMovies(cityIdentifier: "GUAXUPE"){
+    homeScheduledMovies(cityIdentifier: "${config.cityIdentifier}"){
       items {
         genre, movieIdentifier, name, releaseDate, trailerURL, type, url
       }
     }
   }`;
   const comingSoonQuery = `{
-    homeComingSoonMovies(cityIdentifier: "GUAXUPE"){
+    homeComingSoonMovies(cityIdentifier: "${config.cityIdentifier}"){
       items {
         genre, movieIdentifier, name, releaseDate, trailerURL, type, url
       }
     }
   }`;
   const [scheduledResp, comingSoonResp] = await Promise.all([
-    fetchGraphQL(scheduledQuery),
-    fetchGraphQL(comingSoonQuery),
+    fetchGraphQL(scheduledQuery, config.username, config.password),
+    fetchGraphQL(comingSoonQuery, config.username, config.password),
   ]);
   return [
     ...(scheduledResp.data.homeScheduledMovies?.[0]?.items || []),
@@ -325,18 +377,18 @@ async function upsertProgramacao(
   await client.query(upsertQuery, params);
 }
 
-async function syncVelox() {
+async function syncVeloxCinema(config: VeloxCinemaConfig): Promise<void> {
   let client: PoolClient | null = null;
   try {
-    console.log('Iniciando sincronização Velox...');
+    console.log(
+      `Iniciando sincronização Velox para cinema ${config.idCinema}...`,
+    );
 
     client = await pool.connect();
     await client.query('BEGIN');
 
-    const idCinema = 10;
-
     const eventsQuery = `{
-      events(placeIdentifier: "GXP") {
+      events(placeIdentifier: "${config.placeIdentifier}") {
         startDate
         generalFeatures
         workPresented { name parentIdentifier }
@@ -344,19 +396,23 @@ async function syncVelox() {
     }`;
 
     const [filmes, eventsResp] = await Promise.all([
-      fetchAllMovies(),
-      fetchGraphQL(eventsQuery),
+      fetchAllMovies(config),
+      fetchGraphQL(eventsQuery, config.username, config.password),
     ]);
 
     console.log(`Encontrados ${filmes.length} filmes para processar`);
 
     const movieDetailsPromises = filmes.map((filme) =>
-      fetchGraphQL(`{
+      fetchGraphQL(
+        `{
         movies(where: {identifier: {eq: "${filme.movieIdentifier}"}}) {
           name, abstract, duration, typicalAgeRange, genre,
           director { name }, image { contentUrl }, trailer { contentUrl }
         }
-      }`).then((detailsResp) => ({
+      }`,
+        config.username,
+        config.password,
+      ).then((detailsResp) => ({
         filme,
         details: detailsResp.data.movies?.[0],
       })),
@@ -366,7 +422,7 @@ async function syncVelox() {
 
     const validMovies = movieDetailsResults.filter((result) => result.details);
 
-    const filmeIdMap = await upsertMovies(validMovies, idCinema, client);
+    const filmeIdMap = await upsertMovies(validMovies, config.idCinema, client);
 
     const eventos = eventsResp.data.events;
 
@@ -391,21 +447,69 @@ async function syncVelox() {
 
     console.log(`Filmes com sessões: ${Object.keys(sessoesPorFilme).length}`);
 
-    await upsertProgramacao(sessoesPorFilme, filmeIdMap, idCinema, client);
+    await upsertProgramacao(
+      sessoesPorFilme,
+      filmeIdMap,
+      config.idCinema,
+      client,
+    );
 
     await client.query('COMMIT');
 
-    console.log('Sincronização Velox concluída!');
+    console.log(
+      `Sincronização Velox concluída para cinema ${config.idCinema}!`,
+    );
   } catch (error) {
     if (client) await client.query('ROLLBACK');
-    console.error('Erro na sincronização Velox:', error);
+    console.error(
+      `Erro na sincronização Velox para cinema ${config.idCinema}:`,
+      error,
+    );
+    throw error;
   } finally {
     if (client) client.release();
   }
 }
 
+// Sincroniza um cinema específico por ID
+async function syncVeloxById(idCinema: number): Promise<void> {
+  const config = VELOX_CINEMAS.find((c) => c.idCinema === idCinema);
+  if (!config) {
+    throw new Error(`Cinema ${idCinema} não encontrado na configuração Velox`);
+  }
+  await syncVeloxCinema(config);
+}
+
+// Sincroniza todos os cinemas configurados
+async function syncVelox(): Promise<void> {
+  console.log(
+    `Iniciando sincronização Velox para ${VELOX_CINEMAS.length} cinemas...`,
+  );
+  const results = await Promise.allSettled(
+    VELOX_CINEMAS.map((config) => syncVeloxCinema(config)),
+  );
+
+  const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+  const failed = results.filter((r) => r.status === 'rejected').length;
+
+  console.log(
+    `Sincronização Velox finalizada: ${succeeded} sucesso(s), ${failed} falha(s)`,
+  );
+
+  // Log de erros
+  results.forEach((result, index) => {
+    if (result.status === 'rejected') {
+      console.error(
+        `Cinema ${VELOX_CINEMAS[index].idCinema} falhou:`,
+        result.reason,
+      );
+    }
+  });
+}
+
 // Descomente para testar
-//syncVelox();
+// syncVelox();
+// syncVeloxById(10);
 
 // Export para uso via endpoint
-export { syncVelox };
+export { syncVelox, syncVeloxById, syncVeloxCinema, VELOX_CINEMAS };
