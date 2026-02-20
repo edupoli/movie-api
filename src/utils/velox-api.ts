@@ -28,29 +28,53 @@ const VELOX_CINEMAS: VeloxCinemaConfig[] = [
     idCinema: 62,
     username: 'circuitocinemas',
     password: 'oIsTaTeNTIFF',
-    cityIdentifier: 'CINEMA_62', // TODO: Ajustar identificador correto
-    placeIdentifier: 'PLACE_62', // TODO: Ajustar identificador correto
+    cityIdentifier: 'SAOPAULO',
+    placeIdentifier: 'CIR',
   },
+  
   {
     idCinema: 63,
     username: 'circuitocinemas',
     password: 'oIsTaTeNTIFF',
-    cityIdentifier: 'CINEMA_63', // TODO: Ajustar identificador correto
-    placeIdentifier: 'PLACE_63', // TODO: Ajustar identificador correto
+    cityIdentifier: 'GUARULHOS',
+    placeIdentifier: 'GUA',
   },
-  {
-    idCinema: 64,
-    username: 'circuitocinemas',
-    password: 'oIsTaTeNTIFF',
-    cityIdentifier: 'CINEMA_64', // TODO: Ajustar identificador correto
-    placeIdentifier: 'PLACE_64', // TODO: Ajustar identificador correto
-  },
+
   {
     idCinema: 65,
     username: 'circuitocinemas',
     password: 'oIsTaTeNTIFF',
-    cityIdentifier: 'CINEMA_65', // TODO: Ajustar identificador correto
-    placeIdentifier: 'PLACE_65', // TODO: Ajustar identificador correto
+    cityIdentifier: 'PARAUAPEB',
+    placeIdentifier: 'CRJ',
+  },
+
+  {
+    idCinema: 66,
+    username: 'circuitocinemas',
+    password: 'oIsTaTeNTIFF',
+    cityIdentifier: 'PARAUAPEB',
+    placeIdentifier: 'PRP',
+  },
+  {
+    idCinema: 67,
+    username: 'circuitocinemas',
+    password: 'oIsTaTeNTIFF',
+    cityIdentifier: 'PENAPOLIS',
+    placeIdentifier: 'PNP',
+  },
+  {
+    idCinema: 68,
+    username: 'circuitocinemas',
+    password: 'oIsTaTeNTIFF',
+    cityIdentifier: 'PONTAPORA',
+    placeIdentifier: 'CPP',
+  },
+  {
+    idCinema: 69,
+    username: 'circuitocinemas',
+    password: 'oIsTaTeNTIFF',
+    cityIdentifier: 'PRESPRUD',
+    placeIdentifier: 'PRE',
   },
 ];
 
