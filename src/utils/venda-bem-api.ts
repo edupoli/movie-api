@@ -414,6 +414,11 @@ async function main() {
         payload: { usa_pai_filho: '1', filiais: '014' },
       },
       {
+        id: 74,
+        url: 'https://multicine.vendabem.com/vendabemweb/ws/integracao_site_filmes/',
+        payload: { usa_pai_filho: '1', filiais: '015' },
+      },
+      {
         id: 16,
         url: 'https://multicine.vendabem.com/vendabemweb/ws/integracao_site_filmes/',
         payload: { usa_pai_filho: '1', filiais: '016' },

@@ -76,6 +76,34 @@ const VELOX_CINEMAS: VeloxCinemaConfig[] = [
     cityIdentifier: 'PRESPRUD',
     placeIdentifier: 'PRE',
   },
+  {
+    idCinema: 70,
+    username: 'movieart',
+    password: 'dYQRONtp6SGym',
+    cityIdentifier: 'NOVAPRATA',
+    placeIdentifier: 'MNP',
+  },
+  {
+      idCinema: 71,
+      username: 'movieart',
+      password: 'dYQRONtp6SGym',
+      cityIdentifier: 'BENTOGON',
+      placeIdentifier: 'MSB',
+  },
+  {
+      idCinema: 72,
+      username: 'movieart',
+      password: 'dYQRONtp6SGym',
+      cityIdentifier: 'BENTOGON',
+      placeIdentifier: 'MLA',
+  },
+  {
+      idCinema: 73,
+      username: 'movieart',
+      password: 'dYQRONtp6SGym',
+      cityIdentifier: 'ERECHIM',
+      placeIdentifier: 'MER',
+}
 ];
 
 // Helpers copiados do multicine
